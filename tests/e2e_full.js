@@ -17,10 +17,11 @@ const assert = (c, m) => { if (!c) { throw new Error('ASSERT: ' + m); } };
   // ---- import via paste using the exact example from the Claude prompt + more
   await page.click('text=Import');
   await page.waitForSelector('text=Ask Claude for cards');
-  await page.fill('textarea[placeholder^="e.g. \\"AIME"]', 'AIME number theory');
+  await page.click('.chip[data-preset=compmath]');
+  await page.fill('.panel textarea >> nth=0', 'AIME number theory');
   await page.click('text=Copy prompt for Claude');
   const prompt = await page.evaluate(() => navigator.clipboard.readText());
-  assert(prompt.includes('TOPIC: AIME number theory') && prompt.includes('````text'), 'prompt copied');
+  assert(prompt.includes('TOPIC: AIME number theory') && prompt.includes('````text') && prompt.includes('technique triggers'), 'prompt copied with comp math preset');
   const example = prompt.slice(prompt.indexOf('Example of the exact format:') + 'Example of the exact format:'.length).trim();
   const paste = example + '\n\n' + [
     '````text', '#deck: AIME::Number Theory', '#tags: nt',

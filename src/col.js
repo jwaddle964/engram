@@ -41,6 +41,9 @@
       { name: 'Card 1', qfmt: '{{Front}}\n\n{{type:Back}}', afmt: '{{Front}}\n\n<hr id=answer>\n\n{{type:Back}}' }] },
     { key: 'cloze', name: 'Cloze', kind: 'cloze', fields: ['Text', 'Back Extra'], templates: [
       { name: 'Cloze', qfmt: '{{cloze:Text}}', afmt: '{{cloze:Text}}<br>\n{{Back Extra}}' }] },
+    // identical to Anki's stock Image Occlusion note type, so shared decks match it on import
+    { key: 'io', name: "Image Occlusion", kind: 'cloze', fields: ["Occlusion", "Image", "Header", "Back Extra", "Comments"], css: "#image-occlusion-canvas {\n    --inactive-shape-color: #ffeba2;\n    --active-shape-color: #ff8e8e;\n    --inactive-shape-border: 1px #212121;\n    --active-shape-border: 1px #212121;\n    --highlight-shape-color: #ff8e8e00;\n    --highlight-shape-border: 1px #ff8e8e;\n}\n\n.card {\n    font-family: arial;\n    font-size: 20px;\n    text-align: center;\n    color: black;\n    background-color: white;\n}\n", templates: [
+      { name: "Image Occlusion", qfmt: "{{#Header}}<div>{{Header}}</div>{{/Header}}\n<div style=\"display: none\">{{cloze:Occlusion}}</div>\n<div id=\"err\"></div>\n<div id=\"image-occlusion-container\">\n    {{Image}}\n    <canvas id=\"image-occlusion-canvas\"></canvas>\n</div>\n<script>\ntry {\n    anki.imageOcclusion.setup();\n} catch (exc) {\n    document.getElementById(\"err\").innerHTML = `Error loading image occlusion. Is your Anki version up to date?<br><br>${exc}`;\n}\n</script>\n", afmt: "{{#Header}}<div>{{Header}}</div>{{/Header}}\n<div style=\"display: none\">{{cloze:Occlusion}}</div>\n<div id=\"err\"></div>\n<div id=\"image-occlusion-container\">\n    {{Image}}\n    <canvas id=\"image-occlusion-canvas\"></canvas>\n</div>\n<script>\ntry {\n    anki.imageOcclusion.setup();\n} catch (exc) {\n    document.getElementById(\"err\").innerHTML = `Error loading image occlusion. Is your Anki version up to date?<br><br>${exc}`;\n}\n</script>\n\n<div><button id=\"toggle\">Toggle Masks</button></div>\n{{#Back Extra}}<div>{{Back Extra}}</div>{{/Back Extra}}\n" }] },
   ];
 
   // ---------- time ----------
@@ -86,7 +89,7 @@
     if (!C.decks.size) DB.put('decks', { id: 1, name: 'Default', conf: 1, desc: '', collapsed: false, today: null });
     for (const st of STOCK) {
       if (!Array.from(C.notetypes.values()).some((n) => n.stock === st.key)) {
-        DB.put('notetypes', { id: DB.newId(), stock: st.key, name: st.name, kind: st.kind, fields: st.fields.slice(), templates: DB.clone(st.templates), css: CARD_CSS + (st.kind === 'cloze' ? CLOZE_CSS : ''), sortf: 0 });
+        DB.put('notetypes', { id: DB.newId(), stock: st.key, name: st.name, kind: st.kind, fields: st.fields.slice(), templates: DB.clone(st.templates), css: st.css || (CARD_CSS + (st.kind === 'cloze' ? CLOZE_CSS : '')), sortf: 0 });
       }
     }
     DB.commit();
@@ -193,8 +196,11 @@
     for (const n of C.notetypes.values()) if (n.stock === key) return n;
     return null;
   }
+  function isImageOcclusion(nt) {
+    return !!nt && nt.kind === 'cloze' && nt.fields.length >= 4 && nt.fields[0] === 'Occlusion' && nt.fields[1] === 'Image';
+  }
   function notetypesSorted() {
-    const order = ['basic', 'reversed', 'optional', 'typein', 'cloze'];
+    const order = ['basic', 'reversed', 'optional', 'typein', 'cloze', 'io'];
     return Array.from(C.notetypes.values()).sort((a, b) => {
       const ia = order.indexOf(a.stock), ib = order.indexOf(b.stock);
       if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
@@ -911,7 +917,7 @@
     setClock: (fn) => { clock = fn; }, now: () => clock(),
     dayNumber, dayStart, timing, weekdayOfDay, ensureDefaults,
     decksSorted, deckByName, ensureDeck, normalizeDeckName, renameDeck, deleteDeck, deckParents, deckDescendants, parentName, confFor, deckToday,
-    notetypeByName, stockNotetype, notetypesSorted, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
+    notetypeByName, stockNotetype, notetypesSorted, isImageOcclusion, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
     addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,

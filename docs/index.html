@@ -248,6 +248,15 @@ details.more > summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .spinner { width: 18px; height: 18px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (min-width: 600px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+
+/* image occlusion editor */
+.io-pick { width: 100%; min-height: 140px; border: 2px dashed var(--border); border-radius: 14px; background: var(--surface); color: var(--accent); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 600; }
+.io-pick svg.ic { width: 34px; height: 34px; }
+.io-stage { position: relative; display: block; width: fit-content; max-width: 100%; margin: 10px auto 0; line-height: 0; border-radius: 8px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid var(--border); }
+.io-stage img { display: block; max-width: 100%; max-height: 70vh; width: auto; height: auto; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.io-edit-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+.io-labels { position: absolute; inset: 0; pointer-events: none; }
+.io-num { position: absolute; transform: translate(2px, 2px); background: #212121; color: #fff; font: 600 11px/1 var(--font); padding: 2px 4px; border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -1491,7 +1500,7 @@ aliases:["yml"],contains:l}}});const Ke=te;for(const e of Object.keys(Pe)){
 const n=e.replace("grmr_","").replace("_","-");Ke.registerLanguage(n,Pe[e])}
 return Ke}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);</script>
-<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (7303447b74)';
+<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (925d9141d9)';
 
 /* ---- fsrs.js ---- */
 /*
@@ -2199,9 +2208,64 @@ return Ke}()
     return c.nodes.map((n) => (n.cloze ? clozedText(n.cloze) : n.text)).join('');
   }
   const encAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // ---- image occlusion (port of rslib/src/image_occlusion/imageocclusion.rs) ----
+  function splitUnescapedColon(s) {
+    const out = []; let cur = '';
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '\\' && s[i + 1] === ':') { cur += '\\:'; i++; continue; }
+      if (s[i] === ':') { out.push(cur); cur = ''; continue; }
+      cur += s[i];
+    }
+    out.push(cur);
+    return out;
+  }
+  const ioUnescape = (v) => v.replace(/\\:/g, ':');
+  function parseImageCloze(text) {
+    const k = text.indexOf(':');
+    if (k === -1) return null;
+    const shape = text.slice(0, k);
+    const props = [];
+    for (const p of splitUnescapedColon(text.slice(k + 1))) {
+      const e = p.indexOf('=');
+      if (e === -1) continue;
+      props.push({ name: p.slice(0, e), value: ioUnescape(p.slice(e + 1)) });
+    }
+    return { shape, props };
+  }
+  function getImageClozeData(text) {
+    const o = parseImageCloze(text);
+    if (!o) return '';
+    let r = '';
+    if (['rect', 'ellipse', 'polygon', 'text'].includes(o.shape)) r += 'data-shape="' + o.shape + '" ';
+    const zero = (v) => v === '' || v === '0';
+    for (const { name, value } of o.props) {
+      if (['left', 'top', 'angle', 'fill'].includes(name)) { if (value !== '') r += 'data-' + name + '="' + value + '" '; }
+      else if (['width', 'height', 'rx', 'ry', 'scale'].includes(name)) { if (!zero(value)) r += 'data-' + name + '="' + value + '" '; }
+      else if (name === 'points') {
+        const pts = value.split(' ').filter((pp) => pp.includes(',')).join(' ');
+        if (pts) r += 'data-points="' + pts + '" ';
+      } else if (name === 'oi') { if (value !== '') r += 'data-occludeInactive="' + value + '" '; }
+      else if (name === 'text') { if (value !== '') r += 'data-text="' + encAttr(value) + '" '; }
+      else if (name === 'fs') { if (value !== '') r += 'data-font-size="' + value + '" '; }
+    }
+    return r;
+  }
+  function renderImageOcclusion(text, question, active, ords) {
+    const o = ords.join(','), data = getImageClozeData(text);
+    if ((question && active) || ords.includes(0)) return '<div class="cloze" data-ordinal="' + o + '" ' + data + '></div>';
+    if (!active) return '<div class="cloze-inactive" data-ordinal="' + o + '" ' + data + '></div>';
+    if (!question && active) return '<div class="cloze-highlight" data-ordinal="' + o + '" ' + data + '></div>';
+    return '';
+  }
+  function imageOcclusionText(c) {
+    const first = c.nodes[0];
+    return first && !first.cloze && first.text.startsWith('image-occlusion:') ? first.text.slice('image-occlusion:'.length) : null;
+  }
   function revealCloze(c, ord, question, found) {
     const active = c.ords.includes(ord);
     if (active) found.v = true;
+    const io = imageOcclusionText(c);
+    if (io != null) return renderImageOcclusion(io, question, active, c.ords);
     const ordStr = c.ords.join(',');
     const inner = () => c.nodes.map((n) => (n.cloze ? revealCloze(n.cloze, ord, question, found) : n.text)).join('');
     if (question && active) {
@@ -2412,7 +2476,7 @@ return Ke}()
     escapeHtml, decodeEntities, stripHtml, htmlToTextLine, mdToHtml, scanDollarMath,
     tokenizeCloze, parseClozes, revealClozeText, clozeFilter, revealClozeTextOnly, extractClozeForTyping,
     clozeNumbers, clozeProblems, stripHtmlInsideMath, fieldIsEmpty, parseTemplate, renderTemplate,
-    nonEmptyOrds, clozeOrds, compareAnswer, furigana,
+    nonEmptyOrds, clozeOrds, compareAnswer, furigana, getImageClozeData, parseImageCloze,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TextLib = api;
@@ -3030,6 +3094,9 @@ return Ke}()
       { name: 'Card 1', qfmt: '{{Front}}\n\n{{type:Back}}', afmt: '{{Front}}\n\n<hr id=answer>\n\n{{type:Back}}' }] },
     { key: 'cloze', name: 'Cloze', kind: 'cloze', fields: ['Text', 'Back Extra'], templates: [
       { name: 'Cloze', qfmt: '{{cloze:Text}}', afmt: '{{cloze:Text}}<br>\n{{Back Extra}}' }] },
+    // identical to Anki's stock Image Occlusion note type, so shared decks match it on import
+    { key: 'io', name: "Image Occlusion", kind: 'cloze', fields: ["Occlusion", "Image", "Header", "Back Extra", "Comments"], css: "#image-occlusion-canvas {\n    --inactive-shape-color: #ffeba2;\n    --active-shape-color: #ff8e8e;\n    --inactive-shape-border: 1px #212121;\n    --active-shape-border: 1px #212121;\n    --highlight-shape-color: #ff8e8e00;\n    --highlight-shape-border: 1px #ff8e8e;\n}\n\n.card {\n    font-family: arial;\n    font-size: 20px;\n    text-align: center;\n    color: black;\n    background-color: white;\n}\n", templates: [
+      { name: "Image Occlusion", qfmt: "{{#Header}}<div>{{Header}}</div>{{/Header}}\n<div style=\"display: none\">{{cloze:Occlusion}}</div>\n<div id=\"err\"></div>\n<div id=\"image-occlusion-container\">\n    {{Image}}\n    <canvas id=\"image-occlusion-canvas\"></canvas>\n</div>\n<script>\ntry {\n    anki.imageOcclusion.setup();\n} catch (exc) {\n    document.getElementById(\"err\").innerHTML = `Error loading image occlusion. Is your Anki version up to date?<br><br>${exc}`;\n}\n<\/script>\n", afmt: "{{#Header}}<div>{{Header}}</div>{{/Header}}\n<div style=\"display: none\">{{cloze:Occlusion}}</div>\n<div id=\"err\"></div>\n<div id=\"image-occlusion-container\">\n    {{Image}}\n    <canvas id=\"image-occlusion-canvas\"></canvas>\n</div>\n<script>\ntry {\n    anki.imageOcclusion.setup();\n} catch (exc) {\n    document.getElementById(\"err\").innerHTML = `Error loading image occlusion. Is your Anki version up to date?<br><br>${exc}`;\n}\n<\/script>\n\n<div><button id=\"toggle\">Toggle Masks</button></div>\n{{#Back Extra}}<div>{{Back Extra}}</div>{{/Back Extra}}\n" }] },
   ];
 
   // ---------- time ----------
@@ -3075,7 +3142,7 @@ return Ke}()
     if (!C.decks.size) DB.put('decks', { id: 1, name: 'Default', conf: 1, desc: '', collapsed: false, today: null });
     for (const st of STOCK) {
       if (!Array.from(C.notetypes.values()).some((n) => n.stock === st.key)) {
-        DB.put('notetypes', { id: DB.newId(), stock: st.key, name: st.name, kind: st.kind, fields: st.fields.slice(), templates: DB.clone(st.templates), css: CARD_CSS + (st.kind === 'cloze' ? CLOZE_CSS : ''), sortf: 0 });
+        DB.put('notetypes', { id: DB.newId(), stock: st.key, name: st.name, kind: st.kind, fields: st.fields.slice(), templates: DB.clone(st.templates), css: st.css || (CARD_CSS + (st.kind === 'cloze' ? CLOZE_CSS : '')), sortf: 0 });
       }
     }
     DB.commit();
@@ -3182,8 +3249,11 @@ return Ke}()
     for (const n of C.notetypes.values()) if (n.stock === key) return n;
     return null;
   }
+  function isImageOcclusion(nt) {
+    return !!nt && nt.kind === 'cloze' && nt.fields.length >= 4 && nt.fields[0] === 'Occlusion' && nt.fields[1] === 'Image';
+  }
   function notetypesSorted() {
-    const order = ['basic', 'reversed', 'optional', 'typein', 'cloze'];
+    const order = ['basic', 'reversed', 'optional', 'typein', 'cloze', 'io'];
     return Array.from(C.notetypes.values()).sort((a, b) => {
       const ia = order.indexOf(a.stock), ib = order.indexOf(b.stock);
       if (ia !== -1 || ib !== -1) return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
@@ -3900,7 +3970,7 @@ return Ke}()
     setClock: (fn) => { clock = fn; }, now: () => clock(),
     dayNumber, dayStart, timing, weekdayOfDay, ensureDefaults,
     decksSorted, deckByName, ensureDeck, normalizeDeckName, renameDeck, deleteDeck, deckParents, deckDescendants, parentName, confFor, deckToday,
-    notetypeByName, stockNotetype, notetypesSorted, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
+    notetypeByName, stockNotetype, notetypesSorted, isImageOcclusion, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
     addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,
@@ -3911,36 +3981,69 @@ return Ke}()
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---- prompt.js ---- */
-/* The prompt users paste into Claude to get cards in the importable format. */
+/* Prompts users paste into Claude to get cards in the importable format, with subject presets. */
 (function (root) {
   'use strict';
-  function buildPrompt(o) {
-    o = o || {};
-    const topic = (o.topic || '').trim() || '[DESCRIBE THE TOPIC, OR PASTE / ATTACH YOUR NOTES HERE]';
-    const count = (o.count || '').toString().trim();
-    const deck = (o.deck || '').trim();
-    const level = (o.level || '').trim();
-    const styles = o.styles || ['basic', 'cloze'];
+  const PRESETS = {
+    general: {
+      label: 'General', styles: ['basic', 'cloze'], count: '25',
+      placeholder: 'e.g. "AP World History unit 3" or paste your class notes',
+      guidance: [],
+    },
+    bio: {
+      label: 'Biology & science', styles: ['basic', 'cloze'], count: '30',
+      placeholder: 'e.g. "AP Bio: cellular respiration" (attach textbook photos in Claude if you like)',
+      guidance: [
+        '- Use cloze cards for definitions and key terms in context, and Q/A cards for "why" and "what happens if" questions.',
+        '- Break every process (e.g. glycolysis, mitosis, an action potential) into one card per step, and mention the step before it so each card has context.',
+        '- Connect structure to function and cause to effect (e.g. "Why does the inner mitochondrial membrane fold into cristae?").',
+        '- Never ask "list all X". Make one card per item, with a cue that tells the items apart.',
+        '- Include the numbers and units that matter (e.g. resting membrane potential is about -70 mV).',
+        '- For compare/contrast topics (mitosis vs meiosis), make one card per difference.',
+        '- If a labeled diagram is the best way to learn something, add one card naming the diagram I should label myself.',
+      ],
+    },
+    compmath: {
+      label: 'Competition math', styles: ['basic', 'cloze'], count: '20',
+      placeholder: 'e.g. "AIME: Vieta\'s formulas and symmetric sums"',
+      guidance: [
+        '- This is for contests like AMC and AIME. Make these kinds of cards: (1) formulas and theorems WITH their exact conditions, (2) technique triggers: Q describes a feature of a problem, A names the technique to try and why it works, (3) the key insight of a classic problem in one line, (4) facts worth knowing cold (small powers, primes, Pythagorean triples, special angles) only when the topic calls for it.',
+        '- Never put a full solution on a card. Each card tests one step or one idea I can recall in under 15 seconds.',
+        '- When a condition is easy to forget, give it its own card (e.g. "When does equality hold in AM-GM?").',
+        '- Add a tiny concrete example when it makes a formula stick.',
+      ],
+    },
+    schoolmath: {
+      label: 'School math', styles: ['basic', 'cloze'], count: '25',
+      placeholder: 'e.g. "Precalculus: logarithm rules" or paste the unit review sheet',
+      guidance: [
+        '- Make cards for definitions, theorem statements with their conditions, and the steps of standard procedures (one step per card, in order).',
+        '- Add "what is the mistake here?" cards for common errors (sign errors, dividing by something that could be 0, forgetting the domain).',
+        '- For each procedure, include one short worked example that asks for the next step, not the final answer.',
+      ],
+    },
+    vocab: {
+      label: 'Vocabulary', styles: ['reversed'], count: '30',
+      placeholder: 'e.g. "Spanish 2, unit 4 verbs" or paste the word list',
+      guidance: [
+        '- One meaning per card. The word goes on Q, the meaning on A, plus part of speech, gender or a short example sentence on the A side.',
+        '- For easily confused words, add a card that contrasts them.',
+      ],
+    },
+    mistake: {
+      label: 'Missed problem', styles: ['basic', 'cloze'], count: '2-5',
+      placeholder: 'Paste the problem, your answer or attempt, and the correct answer or solution if you have it (or attach a screenshot in Claude)',
+      guidance: [],
+    },
+  };
+
+  function formatRules(deck, styles) {
     const allowed = [];
     if (styles.includes('basic')) allowed.push('- Q:/A: question and answer cards (the default)');
     if (styles.includes('cloze')) allowed.push('- C: cloze cards, when a fact is best learned as a fill-in-the-blank sentence');
     if (styles.includes('reversed')) allowed.push('- "#type: reversed" sections for vocabulary or term/definition pairs that should be quizzed in both directions');
     if (styles.includes('typein')) allowed.push('- "#type: typein" sections for short exact answers I should type (a word, a number, a formula name)');
     return [
-      'Make spaced-repetition flashcards for my flashcard app.',
-      '',
-      'TOPIC: ' + topic,
-      count ? 'NUMBER OF CARDS: about ' + count : 'NUMBER OF CARDS: as many as the material needs (each card = one fact)',
-      level ? 'MY LEVEL: ' + level : null,
-      deck ? 'DECK NAME: ' + deck : null,
-      '',
-      'Write good cards:',
-      '- One idea per card (minimum information principle). Split lists and multi-part facts into separate cards.',
-      '- Questions must have one clear, unambiguous answer. Keep answers short; add a brief "why" only when it helps memory.',
-      '- Prefer "why/how" and application questions over pure trivia when the topic allows it.',
-      '- For problem-solving topics, make cards for the key insight or first step, not whole solutions.',
-      '- Do not make a card that gives away its own answer, and avoid yes/no questions.',
-      '',
       'OUTPUT FORMAT (follow exactly, my app parses it):',
       '- Put ALL cards in ONE code block that starts with ````text (four backticks) and ends with ```` so I can copy it in one tap. Write nothing inside the block except cards and header lines.',
       '- First line inside the block: #deck: ' + (deck || 'Deck Name') + '   (use :: for subdecks, e.g. #deck: AIME::Number Theory)',
@@ -3972,9 +4075,53 @@ return Ke}()
       'A: `3` (integer division truncates)',
       'tags: java',
       '````',
-    ].filter((x) => x !== null).join('\n');
+    ].filter((x) => x !== null);
   }
-  root.ClaudePrompt = { buildPrompt };
+
+  const GOOD_CARDS = [
+    'Write good cards:',
+    '- One idea per card (minimum information principle). Split lists and multi-part facts into separate cards.',
+    '- Questions must have one clear, unambiguous answer. Keep answers short; add a brief "why" only when it helps memory.',
+    '- Prefer "why/how" and application questions over pure trivia when the topic allows it.',
+    '- Do not make a card that gives away its own answer, and avoid yes/no questions.',
+  ];
+
+  function buildPrompt(o) {
+    o = o || {};
+    const preset = PRESETS[o.preset] || PRESETS.general;
+    const styles = o.styles || preset.styles;
+    const deck = (o.deck || '').trim();
+    const count = (o.count || '').toString().trim();
+    const level = (o.level || '').trim();
+    const topic = (o.topic || '').trim();
+    if (o.preset === 'mistake') {
+      return [
+        'I got a problem wrong. Make ' + (count || '2-5') + ' flashcards for my flashcard app that would have helped me solve it.',
+        '',
+        topic || 'PROBLEM: [PASTE THE PROBLEM]\nMY ATTEMPT OR ANSWER: [WHAT I DID]\nCORRECT ANSWER OR SOLUTION: [IF I HAVE IT]',
+        level ? 'MY LEVEL: ' + level : null,
+        '',
+        'Before the code block, in 2 or 3 sentences, tell me the key idea I missed and whether my mistake was a concept gap, the wrong tool, or an arithmetic slip. If no solution is given, solve the problem yourself first and double-check the answer.',
+        '',
+        'Then make the cards:',
+        '- The key insight as a trigger card: Q describes the feature of the problem that should have tipped me off, A names the technique and why it works.',
+        '- Any formula, theorem or fact I did not know or misused, with its exact conditions.',
+        '- If the mistake was careless, one card about that specific trap.',
+        '- Do not copy the whole problem onto a card unless it is one short line. Never put a full solution on a card.',
+        '',
+      ].concat(formatRules(deck || 'Mistakes', styles)).filter((x) => x !== null).join('\n');
+    }
+    return [
+      'Make spaced-repetition flashcards for my flashcard app.',
+      '',
+      'TOPIC: ' + (topic || '[DESCRIBE THE TOPIC, OR PASTE / ATTACH YOUR NOTES HERE]'),
+      count ? 'NUMBER OF CARDS: about ' + count : 'NUMBER OF CARDS: as many as the material needs (each card = one fact)',
+      level ? 'MY LEVEL: ' + level : null,
+      deck ? 'DECK NAME: ' + deck : null,
+      '',
+    ].concat(GOOD_CARDS, preset.guidance.length ? ['', 'For this subject:'].concat(preset.guidance) : [], [''], formatRules(deck, styles)).filter((x) => x !== null).join('\n');
+  }
+  root.ClaudePrompt = { buildPrompt, PRESETS };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.ClaudePrompt;
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
@@ -4241,6 +4388,12 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 .hint { color: #2563eb; }
 .tts-btn, .sound-btn { border: 1px solid #c9c9cf; background: transparent; border-radius: 999px; width: 38px; height: 38px; font-size: 18px; vertical-align: middle; cursor: pointer; color: inherit; }
 .template-error, .empty-card { color: #c62828; font-size: 16px; }
+#image-occlusion-container { position: relative; display: inline-block; max-width: 100%; line-height: 0; margin: 6px auto; }
+#image-occlusion-container img { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; }
+#image-occlusion-canvas { display: none; }
+.io-overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.io-text { position: absolute; line-height: 1.2; background: rgba(255,255,255,.85); color: #111; padding: 1px 3px; font-size: 14px; white-space: pre; }
+#toggle { margin-top: 10px; border: 1px solid #c9c9cf; border-radius: 8px; background: transparent; color: inherit; padding: 6px 12px; font-size: 15px; cursor: pointer; }
 .replay-button svg { width: 32px; height: 32px; }
 `;
   /** Render a card side into a shadow-root host. Returns {typeInput, expected} */
@@ -4317,12 +4470,77 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       const list = side === 'a' && opts.skipFront ? sounds.slice(opts.skipFront) : sounds;
       if (list.length) playSound(list[0].getAttribute('data-sound'));
     }
+    const ioc = cardDiv.querySelector('#image-occlusion-container');
+    if (ioc) setupImageOcclusion(cardDiv, ioc);
     const typeInput = cardDiv.querySelector('input[data-typeans]');
     if (side === 'a') {
       const ans = cardDiv.querySelector('#answer');
       if (ans && opts.scrollToAnswer) setTimeout(() => { try { ans.scrollIntoView({ block: 'start' }); } catch (e) { /* ignore */ } }, 0);
     }
     return { typeInput, expected: typeAnswer ? typeAnswer.expected : null, soundCount: sounds.length };
+  }
+  /** Draw Anki image-occlusion masks (rendered as hidden data divs by the cloze filter) over the image. */
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function ioShapes(root) {
+    const out = [];
+    for (const el of root.querySelectorAll('div.cloze[data-shape], div.cloze-inactive[data-shape], div.cloze-highlight[data-shape]')) {
+      const d = el.dataset;
+      const kind = el.classList.contains('cloze') ? 'active' : el.classList.contains('cloze-highlight') ? 'highlight' : 'inactive';
+      out.push({ kind, shape: d.shape, left: parseFloat(d.left) || 0, top: parseFloat(d.top) || 0, width: parseFloat(d.width) || 0, height: parseFloat(d.height) || 0,
+        rx: parseFloat(d.rx) || 0, ry: parseFloat(d.ry) || 0, points: d.points || '', text: d.text || '', oi: d.occludeinactive === '1', fill: d.fill || null, ordinal: d.ordinal });
+    }
+    return out;
+  }
+  function setupImageOcclusion(cardDiv, ioc) {
+    const canvas = ioc.querySelector('canvas'); if (canvas) canvas.remove();
+    const img = ioc.querySelector('img');
+    if (!img) { ioc.textContent = 'No image to show.'; return; }
+    const shapes = ioShapes(cardDiv);
+    const absolute = shapes.some((sh) => [sh.left, sh.top, sh.width, sh.height].some((v) => v > 1.5));
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('class', 'io-overlay');
+    svg.setAttribute('viewBox', '0 0 1 1');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    if (absolute) {
+      const fit = () => { if (img.naturalWidth) svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight); };
+      img.addEventListener('load', fit); fit();
+    }
+    const inactiveGroup = document.createElementNS(SVGNS, 'g');
+    const mk = (sh) => {
+      let el;
+      if (sh.shape === 'ellipse') {
+        el = document.createElementNS(SVGNS, 'ellipse');
+        el.setAttribute('cx', sh.left + sh.rx); el.setAttribute('cy', sh.top + sh.ry); el.setAttribute('rx', sh.rx); el.setAttribute('ry', sh.ry);
+      } else if (sh.shape === 'polygon') {
+        el = document.createElementNS(SVGNS, 'polygon');
+        el.setAttribute('points', sh.points);
+      } else {
+        el = document.createElementNS(SVGNS, 'rect');
+        el.setAttribute('x', sh.left); el.setAttribute('y', sh.top); el.setAttribute('width', sh.width); el.setAttribute('height', sh.height);
+      }
+      el.setAttribute('vector-effect', 'non-scaling-stroke');
+      return el;
+    };
+    for (const sh of shapes) {
+      if (sh.shape === 'text') {
+        if (!sh.text) continue;
+        const t = h('div', { class: 'io-text', style: { left: (absolute ? 0 : sh.left * 100) + '%', top: (absolute ? 0 : sh.top * 100) + '%' } }, sh.text);
+        ioc.appendChild(t);
+        continue;
+      }
+      if (sh.kind === 'inactive' && !sh.oi) continue;
+      const el = mk(sh);
+      if (sh.kind === 'active') { el.setAttribute('fill', '#ff8e8e'); el.setAttribute('stroke', '#212121'); el.setAttribute('stroke-width', '1'); svg.appendChild(el); }
+      else if (sh.kind === 'inactive') { el.setAttribute('fill', sh.fill && sh.fill !== '#ffeba2' ? sh.fill : '#ffeba2'); el.setAttribute('stroke', '#212121'); el.setAttribute('stroke-width', '1'); inactiveGroup.appendChild(el); }
+      else { el.setAttribute('fill', 'none'); el.setAttribute('stroke', '#ff5c5c'); el.setAttribute('stroke-width', '2.5'); svg.appendChild(el); }
+    }
+    svg.insertBefore(inactiveGroup, svg.firstChild);
+    ioc.appendChild(svg);
+    const toggle = cardDiv.querySelector('#toggle');
+    if (toggle) {
+      if (shapes.some((sh) => sh.oi)) toggle.addEventListener('click', (e) => { e.stopPropagation(); inactiveGroup.style.display = inactiveGroup.style.display === 'none' ? '' : 'none'; });
+      else toggle.style.display = 'none';
+    }
   }
   let currentAudio = null;
   async function playSound(name) {
@@ -5085,39 +5303,70 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
   }
 
   // ---------- add ----------
+  function tagsField(initial) {
+    const input = h('input', { type: 'text', value: (initial || []).join(' '), placeholder: 'tags separated by spaces', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+    return { el: h('div', { class: 'fld' }, h('div', { class: 'fld-head' }, h('b', null, 'Tags')), input), get: () => input.value.split(/[\s,]+/).filter(Boolean) };
+  }
   route('/add', (app) => {
-    let ntid = (C.meta.addNotetype && C.notetypes.get(C.meta.addNotetype)) ? C.meta.addNotetype : Col.stockNotetype('basic').id;
+    const ntid0 = (C.meta.addNotetype && C.notetypes.get(C.meta.addNotetype)) ? C.meta.addNotetype : Col.stockNotetype('basic').id;
     let did = root.__addDeck || (C.meta.addDeck && C.decks.get(C.meta.addDeck) ? C.meta.addDeck : (C.decks.get(C.meta.curDeck) ? C.meta.curDeck : 1));
     root.__addDeck = null;
     const ntSel = h('select', { 'aria-label': 'Note type' }, Col.notetypesSorted().map((n) => h('option', { value: String(n.id) }, n.name)));
-    ntSel.value = String(ntid);
+    ntSel.value = String(ntid0);
     const deckBtn = h('button', { class: 'btn block', type: 'button', style: { justifyContent: 'space-between' } });
     const setDeckLabel = () => { deckBtn.innerHTML = ''; deckBtn.append(h('span', null, (C.decks.get(did) || { name: 'Default' }).name), icon('chevron')); };
     setDeckLabel();
     deckBtn.addEventListener('click', async () => { const d = await deckPicker('Add to deck', did); if (d) { did = d; setDeckLabel(); } });
     let added = 0;
+    const counter = h('span', { class: 'muted small' });
+    const wrap = h('div');
+    let ed = null, io = null, ioTags = null;
+    const curNt = () => C.notetypes.get(Number(ntSel.value));
+    const mount = () => {
+      wrap.innerHTML = '';
+      const nt = curNt();
+      if (Col.isImageOcclusion(nt)) {
+        const lastTags = ed ? ed.tags() : ioTags ? ioTags.get() : [];
+        io = root.IO.ioEditor({});
+        ioTags = tagsField(lastTags);
+        ed = null;
+        wrap.append(io.el, ioTags.el);
+      } else if (ed) ed.setNotetype(nt.id);
+      else {
+        io = null;
+        ed = noteEditor({ ntid: nt.id, fields: [], tags: ioTags ? ioTags.get() : [], onSubmit: submit });
+        wrap.append(ed.el);
+      }
+      if (!Col.isImageOcclusion(nt) && ed && !wrap.contains(ed.el)) wrap.append(ed.el);
+    };
     const submit = () => {
-      const values = ed.values();
-      const tags = ed.tags();
-      const r = Col.addNote(Number(ntSel.value), values, tags, did, 'md');
+      const nt = curNt();
+      let values, tags, fmt;
+      if (io) {
+        const prob = io.problem();
+        if (prob) { toast(prob); return; }
+        values = io.getFields(); tags = ioTags.get(); fmt = 'html';
+      } else { values = ed.values(); tags = ed.tags(); fmt = 'md'; }
+      const r = Col.addNote(nt.id, values, tags, did, fmt);
       if (r.error) { toast(r.error); return; }
       added++;
-      DB.begin('pref', { undoable: false }); DB.update('meta', 'col', (m) => { m.addNotetype = Number(ntSel.value); m.addDeck = did; }); DB.commit();
+      DB.begin('pref', { undoable: false }); DB.update('meta', 'col', (m) => { m.addNotetype = nt.id; m.addDeck = did; }); DB.commit();
       rememberTags(tags);
       toast('Added ' + r.cards.length + ' card' + (r.cards.length === 1 ? '' : 's'), { label: 'Undo', fn: () => { DB.undo(); toast('Removed'); } });
-      ed.clear();
-      ed.focus();
+      if (io) io.reset(); else { ed.clear(); ed.focus(); }
       counter.textContent = added + ' added this session';
     };
-    const ed = noteEditor({ ntid, fields: [], tags: (C.meta.recentTags || []).slice(0, 0), onSubmit: submit });
-    ntSel.addEventListener('change', () => ed.setNotetype(Number(ntSel.value)));
-    const counter = h('span', { class: 'muted small' });
-    app.appendChild(topbar('Add', iconBtn('back', 'Back', () => back('/')), h('button', { class: 'icon-btn', type: 'button', onclick: () => previewNote(ed.nt(), ed.values(), 'md', did, ed.tags()) }, icon('eye'), 'Preview')));
+    ntSel.addEventListener('change', () => { if (!Col.isImageOcclusion(curNt()) && io) { io = null; ed = null; } mount(); });
+    mount();
+    app.appendChild(topbar('Add', iconBtn('back', 'Back', () => back('/')), h('button', { class: 'icon-btn', type: 'button', onclick: () => {
+      if (io) { const prob = io.problem(); if (prob) { toast(prob); return; } previewNote(curNt(), io.getFields(), 'html', did, ioTags.get()); }
+      else previewNote(ed.nt(), ed.values(), 'md', did, ed.tags());
+    } }, icon('eye'), 'Preview')));
     app.appendChild(h('main', { class: 'view' },
       h('div', { class: 'row' }, h('label', { class: 'field grow' }, h('span', null, 'Type'), ntSel), h('label', { class: 'field grow' }, h('span', null, 'Deck'), deckBtn)),
-      ed.el,
+      wrap,
       h('div', { class: 'sticky-bottom' }, h('button', { class: 'btn primary block', type: 'button', onclick: submit }, icon('plus'), 'Add'), h('div', { style: { textAlign: 'center', marginTop: '6px' } }, counter))));
-    setTimeout(() => { if (!/iPhone|iPad|Android/.test(navigator.userAgent)) ed.focus(); }, 50);
+    setTimeout(() => { if (ed && !/iPhone|iPad|Android/.test(navigator.userAgent)) ed.focus(); }, 50);
   });
 
   // ---------- edit ----------
@@ -5127,16 +5376,24 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     if (!note) { toast('Note not found'); back('/browse'); return; }
     const nt = C.notetypes.get(note.ntid);
     const cards = Col.cardsOfNote(nid);
+    const isIO = Col.isImageOcclusion(nt);
+    let ioEd = null, ioTags = null;
+    if (isIO) {
+      ioEd = root.IO.ioEditor({ image: root.IO.imageNameFromField(note.fields[1]), occlusion: note.fields[0], header: note.fields[2], backExtra: note.fields[3] });
+      ioTags = tagsField(note.tags);
+    }
+    const values = () => (isIO ? ioEd.getFields().map((v, i) => (i === 4 ? note.fields[4] || '' : v)) : ed.values());
     const save = () => {
-      const r = Col.updateNote(nid, ed.values(), ed.tags());
+      if (isIO) { const prob = ioEd.problem(); if (prob) { toast(prob); return; } }
+      const r = Col.updateNote(nid, values(), isIO ? ioTags.get() : ed.tags());
       if (r.error) { toast(r.error); return; }
-      rememberTags(ed.tags());
+      rememberTags(isIO ? ioTags.get() : ed.tags());
       toast('Saved' + (r.added ? ', ' + r.added + ' card(s) added' : '') + (r.removed ? ', ' + r.removed + ' card(s) removed' : ''));
       back('/browse');
     };
-    const ed = noteEditor({ ntid: note.ntid, fields: note.fields, tags: note.tags, fmt: note.fmt, nid, onSubmit: save });
+    const ed = isIO ? null : noteEditor({ ntid: note.ntid, fields: note.fields, tags: note.tags, fmt: note.fmt, nid, onSubmit: save });
     app.appendChild(topbar('Edit note', iconBtn('back', 'Cancel', () => back('/browse')), h('div', { class: 'row', style: { gap: 0 } },
-      iconBtn('eye', 'Preview', () => previewNote(nt, ed.values(), note.fmt, cards[0] ? cards[0].did : 1, ed.tags())),
+      iconBtn('eye', 'Preview', () => previewNote(nt, values(), note.fmt, cards[0] ? cards[0].did : 1, isIO ? ioTags.get() : ed.tags())),
       iconBtn('trash', 'Delete note', async () => {
         if (!await confirmDialog('Delete this note and its ' + cards.length + ' card' + (cards.length === 1 ? '' : 's') + '?', 'Delete', true)) return;
         Col.deleteNotes([nid]);
@@ -5148,7 +5405,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
         h('div', { class: 's' }, (C.decks.get(c.did) || {}).name + ' · ' + dueLabel(c))), icon('info'))));
     app.appendChild(h('main', { class: 'view' },
       h('div', { class: 'muted small' }, nt.name),
-      ed.el,
+      isIO ? [ioEd.el, ioTags.el] : ed.el,
       h('div', { class: 'section-title' }, 'Cards'), cardList,
       h('div', { class: 'row', style: { marginTop: '10px' } },
         h('button', { class: 'btn', onclick: async () => { const d = await deckPicker('Move cards to', cards[0] && cards[0].did); if (d) { Col.moveCards(cards.map((c) => c.id), d); toast('Moved'); root.UI.render(); } } }, icon('deck'), 'Change deck')),
@@ -5372,12 +5629,32 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const deckIn = h('input', { type: 'text', value: curDeck && curDeck.id !== 1 ? curDeck.name : '', placeholder: 'e.g. AIME::Number Theory', autocapitalize: 'off' });
     const countIn = h('input', { type: 'number', value: '25', min: '1', max: '500', inputmode: 'numeric' });
     const levelIn = h('input', { type: 'text', placeholder: 'optional, e.g. high school, AIME qualifier', value: root.__lastLevel || '' });
-    const styleState = new Set(['basic', 'cloze']);
-    const styleChips = h('div', { class: 'chips' }, [['basic', 'Q & A'], ['cloze', 'Cloze'], ['reversed', 'Two-way'], ['typein', 'Type answer']].map(([k, l]) => {
+    const PRESETS = root.ClaudePrompt.PRESETS;
+    let preset = PRESETS[root.__preset] ? root.__preset : 'general';
+    const styleState = new Set(PRESETS[preset].styles);
+    const styleDefs = [['basic', 'Q & A'], ['cloze', 'Cloze'], ['reversed', 'Two-way'], ['typein', 'Type answer']];
+    const styleChips = h('div', { class: 'chips' }, styleDefs.map(([k, l]) => {
       const b = h('button', { class: 'chip' + (styleState.has(k) ? ' on' : ''), type: 'button', onclick: () => { if (styleState.has(k)) styleState.delete(k); else styleState.add(k); b.classList.toggle('on', styleState.has(k)); } }, l);
       return b;
     }));
-    const promptText = () => root.ClaudePrompt.buildPrompt({ topic: topic.value, deck: deckIn.value, count: countIn.value, level: levelIn.value, styles: Array.from(styleState) });
+    const topicLabel = h('span', null, 'What should the cards cover?');
+    const presetChips = h('div', { class: 'chips' }, Object.entries(PRESETS).map(([k, v]) => h('button', { class: 'chip' + (k === preset ? ' on' : ''), type: 'button', 'data-preset': k, onclick: () => applyPreset(k) }, v.label)));
+    function applyPreset(k) {
+      preset = k; root.__preset = k;
+      const pr = PRESETS[k];
+      presetChips.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.getAttribute('data-preset') === k));
+      topic.placeholder = pr.placeholder;
+      topic.rows = k === 'mistake' ? 6 : 2;
+      topicLabel.textContent = k === 'mistake' ? 'The problem you missed' : 'What should the cards cover?';
+      countIn.type = k === 'mistake' ? 'text' : 'number';
+      countIn.value = pr.count;
+      styleState.clear(); pr.styles.forEach((x) => styleState.add(x));
+      styleChips.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('on', styleState.has(styleDefs[i][0])));
+      if (k === 'mistake' && !deckIn.value) deckIn.placeholder = 'Mistakes';
+      else deckIn.placeholder = 'e.g. AIME::Number Theory';
+      promptBox.classList.add('hidden');
+    }
+    const promptText = () => root.ClaudePrompt.buildPrompt({ preset, topic: topic.value, deck: deckIn.value, count: countIn.value, level: levelIn.value, styles: Array.from(styleState) });
     const promptBox = h('div', { class: 'prompt-box hidden' });
     const copyBtn = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
       root.__lastTopic = topic.value; root.__lastLevel = levelIn.value;
@@ -5387,7 +5664,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const showBtn = h('button', { class: 'btn', type: 'button', onclick: () => { promptBox.textContent = promptText(); promptBox.classList.toggle('hidden'); } }, 'Show prompt');
     view.appendChild(h('div', { class: 'panel' },
       h('div', { class: 'step-h' }, h('span', { class: 'step-n' }, '1'), 'Ask Claude for cards'),
-      h('label', { class: 'field' }, h('span', null, 'What should the cards cover?'), topic),
+      h('div', { class: 'small muted' }, 'What are you studying?'), presetChips,
+      h('label', { class: 'field' }, topicLabel, topic),
       h('div', { class: 'row' },
         h('label', { class: 'field grow' }, h('span', null, 'Deck'), deckIn),
         h('label', { class: 'field', style: { width: '110px' } }, h('span', null, 'How many'), countIn)),
@@ -5396,6 +5674,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       h('div', { class: 'row', style: { marginTop: '8px' } }, copyBtn, showBtn),
       promptBox,
       h('p', { class: 'help' }, 'Paste the prompt into Claude. You can also attach notes, a PDF or photos of your textbook in the same message. Claude replies with one code block: tap its copy button.')));
+    applyPreset(preset);
 
     // ---- step 2+3: paste & preview
     const ta = h('textarea', { class: 'mono', rows: 8, placeholder: 'Paste Claude\'s reply here (the whole code block).', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
@@ -6148,6 +6427,233 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
   function median(a) { const s = a.slice().sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0; }
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
+/* ---- ui_io.js ---- */
+/* Image occlusion editor: pick a photo/diagram, drag boxes over labels, each box (or group) becomes a card. */
+(function (root) {
+  'use strict';
+  const { h, icon, toast, autoGrow } = root.UI;
+  const T = root.TextLib, DB = root.DB;
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  const fmt = (v) => { const s = String(Math.round(v * 10000) / 10000); return s.replace(/^0\./, '.').replace(/^-0\./, '-.'); };
+
+  /** Parse an existing Occlusion field into masks. Unknown shapes are kept verbatim. */
+  function parseMasks(occlusion) {
+    const masks = [];
+    const walk = (nodes) => {
+      for (const n of nodes) {
+        if (!n.cloze) continue;
+        const first = n.cloze.nodes[0];
+        if (first && !first.cloze && first.text.startsWith('image-occlusion:')) {
+          const raw = first.text.slice('image-occlusion:'.length);
+          const o = T.parseImageCloze(raw);
+          const p = {};
+          if (o) for (const { name, value } of o.props) p[name] = value;
+          const ord = n.cloze.ords[0] || 1;
+          if (o && o.shape === 'rect') masks.push({ ord, shape: 'rect', left: +p.left || 0, top: +p.top || 0, width: +p.width || 0, height: +p.height || 0, raw: null });
+          else masks.push({ ord, shape: o ? o.shape : 'unknown', raw, p });
+        } else walk(n.cloze.nodes);
+      }
+    };
+    walk(T.parseClozes(occlusion || ''));
+    const oi = !/:oi=0/.test(occlusion || '') && (/:oi=1/.test(occlusion || '') || !occlusion);
+    return { masks, hideAll: oi };
+  }
+  function buildOcclusion(masks, hideAll) {
+    return masks.slice().sort((a, b) => a.ord - b.ord).map((m) => {
+      if (m.raw != null) return '{{c' + m.ord + '::image-occlusion:' + m.raw.replace(/:oi=[01]/, ':oi=' + (hideAll ? 1 : 0)) + '}}<br>';
+      return '{{c' + m.ord + '::image-occlusion:rect:left=' + fmt(m.left) + ':top=' + fmt(m.top) + ':width=' + fmt(m.width) + ':height=' + fmt(m.height) + ':oi=' + (hideAll ? 1 : 0) + '}}<br>';
+    }).join('');
+  }
+  const htmlToPlain = (html) => T.stripHtml(html || '').replace(/\n+$/, '');
+  const plainToHtml = (txt) => T.escapeHtml(txt || '').replace(/\n/g, '<br>');
+
+  /**
+   * opts: { image (media name), occlusion, header, backExtra, onSubmit }
+   * returns { el, getFields(), hasContent(), reset() }
+   */
+  function ioEditor(opts) {
+    opts = opts || {};
+    let image = opts.image || null;
+    const parsed = parseMasks(opts.occlusion);
+    let masks = parsed.masks;
+    let hideAll = parsed.hideAll;
+    let selected = new Set();
+    const history = [];
+    const snapshot = () => { history.push(JSON.stringify(masks)); if (history.length > 50) history.shift(); };
+
+    const el = h('div', { class: 'io-editor' });
+    const fileIn = h('input', { type: 'file', accept: 'image/*', style: { display: 'none' } });
+    const stage = h('div', { class: 'io-stage' });
+    const img = h('img', { alt: 'diagram', draggable: 'false' });
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('class', 'io-edit-overlay');
+    svg.setAttribute('viewBox', '0 0 1 1');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    const labels = h('div', { class: 'io-labels' });
+    stage.append(img, svg, labels);
+    const placeholder = h('button', { class: 'io-pick', type: 'button', onclick: () => fileIn.click() }, icon('file'), h('span', null, 'Choose a diagram or take a photo'));
+    const info = h('div', { class: 'muted small', style: { margin: '6px 0' } });
+    const modeSeg = h('div', { class: 'seg' });
+    const header = h('textarea', { rows: 2, placeholder: 'Header (optional), e.g. "Label the parts of the cell"' });
+    header.value = htmlToPlain(opts.header);
+    const extra = h('textarea', { rows: 2, placeholder: 'Back Extra (optional): shown after you reveal' });
+    extra.value = htmlToPlain(opts.backExtra);
+    autoGrow(header); autoGrow(extra);
+    const btn = (label, title, fn, ic) => h('button', { class: 'btn', type: 'button', title, onclick: fn, style: { minHeight: '38px', padding: '6px 10px', fontSize: '14px' } }, ic ? icon(ic) : null, label);
+    const toolbar = h('div', { class: 'row', style: { gap: '6px', margin: '8px 0' } },
+      btn('Undo', 'Undo last change', () => { if (!history.length) return; masks = JSON.parse(history.pop()); selected.clear(); draw(); }, 'undo'),
+      btn('Group', 'Selected boxes become one card (hidden together)', () => {
+        if (selected.size < 2) { toast('Tap two or more boxes to select them first'); return; }
+        snapshot();
+        const ord = Math.min(...Array.from(selected).map((i) => masks[i].ord));
+        selected.forEach((i) => { masks[i].ord = ord; });
+        selected.clear(); draw();
+      }),
+      btn('Ungroup', 'Give each selected box its own card', () => {
+        if (!selected.size) { toast('Tap a box to select it first'); return; }
+        snapshot();
+        let next = Math.max(0, ...masks.map((m) => m.ord));
+        const seen = new Set();
+        Array.from(selected).sort((a, b) => a - b).forEach((i) => { if (seen.has(masks[i].ord)) masks[i].ord = ++next; else seen.add(masks[i].ord); });
+        selected.clear(); draw();
+      }),
+      btn('Delete', 'Delete selected boxes', () => {
+        if (!selected.size) { toast('Tap a box to select it first'); return; }
+        snapshot();
+        masks = masks.filter((_, i) => !selected.has(i));
+        selected.clear(); draw();
+      }, 'trash'),
+      btn('Change image', 'Pick a different image', () => fileIn.click(), 'file'));
+    const setMode = (v) => { hideAll = v; modeSeg.querySelectorAll('button').forEach((b, i) => b.classList.toggle('on', (i === 0) === hideAll)); };
+    modeSeg.append(
+      h('button', { type: 'button', onclick: () => setMode(true) }, 'Hide all, guess one'),
+      h('button', { type: 'button', onclick: () => setMode(false) }, 'Hide one, guess one'));
+    setMode(hideAll);
+
+    el.append(fileIn, placeholder, stage, info, toolbar,
+      h('div', { class: 'small muted' }, 'Mode'), modeSeg,
+      h('div', { class: 'fld' }, h('div', { class: 'fld-head' }, h('b', null, 'Header')), header),
+      h('div', { class: 'fld' }, h('div', { class: 'fld-head' }, h('b', null, 'Back Extra')), extra));
+
+    async function setImage(name) {
+      image = name;
+      const url = await root.UI.mediaUrl(name);
+      if (!url) { toast('Image not found: ' + name); return; }
+      img.src = url;
+      draw();
+    }
+    fileIn.addEventListener('change', async () => {
+      const f = fileIn.files[0];
+      fileIn.value = '';
+      if (!f) return;
+      const name = await storeImageFile(f);
+      if (image && masks.length) { snapshot(); }
+      await setImage(name);
+    });
+
+    function draw() {
+      const has = !!image;
+      placeholder.classList.toggle('hidden', has);
+      stage.classList.toggle('hidden', !has);
+      toolbar.classList.toggle('hidden', !has);
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      labels.innerHTML = '';
+      masks.forEach((m, i) => {
+        if (m.shape !== 'rect') {
+          // keep non-rectangle shapes from Anki; show their bounding box
+          const p = m.p || {};
+          let l = +p.left || 0, t = +p.top || 0, w = +p.width || (p.rx ? 2 * p.rx : 0), hh = +p.height || (p.ry ? 2 * p.ry : 0);
+          if (p.points) {
+            const pts = p.points.split(' ').map((q) => q.split(',').map(Number)).filter((q) => q.length === 2 && q.every(Number.isFinite));
+            if (pts.length) { const xs = pts.map((q) => q[0]), ys = pts.map((q) => q[1]); l = Math.min(...xs); t = Math.min(...ys); w = Math.max(...xs) - l; hh = Math.max(...ys) - t; }
+          }
+          Object.assign(m, { left: l, top: t, width: w || 0.05, height: hh || 0.05 });
+        }
+        const r = document.createElementNS(SVGNS, 'rect');
+        r.setAttribute('x', m.left); r.setAttribute('y', m.top); r.setAttribute('width', m.width); r.setAttribute('height', m.height);
+        r.setAttribute('fill', selected.has(i) ? 'rgba(37,99,235,.55)' : 'rgba(255,142,142,.75)');
+        r.setAttribute('stroke', selected.has(i) ? '#1d4ed8' : '#212121');
+        r.setAttribute('stroke-width', selected.has(i) ? '2.5' : '1');
+        r.setAttribute('vector-effect', 'non-scaling-stroke');
+        if (m.shape !== 'rect') r.setAttribute('stroke-dasharray', '4 3');
+        svg.appendChild(r);
+        labels.appendChild(h('span', { class: 'io-num', style: { left: (m.left * 100) + '%', top: (m.top * 100) + '%' } }, String(m.ord)));
+      });
+      const cards = new Set(masks.map((m) => m.ord)).size;
+      info.textContent = has ? (masks.length ? masks.length + ' box' + (masks.length === 1 ? '' : 'es') + ', ' + cards + ' card' + (cards === 1 ? '' : 's') + '. Drag to add a box, tap boxes to select.' : 'Drag across each label you want to hide. Every box becomes its own card.') : '';
+    }
+
+    // ---- pointer drawing ----
+    let start = null, live = null;
+    const rel = (e) => {
+      const b = svg.getBoundingClientRect();
+      return { x: Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), y: Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)), w: b.width, h: b.height };
+    };
+    svg.addEventListener('pointerdown', (e) => {
+      if (!image) return;
+      e.preventDefault();
+      svg.setPointerCapture(e.pointerId);
+      start = rel(e);
+      live = document.createElementNS(SVGNS, 'rect');
+      live.setAttribute('fill', 'rgba(255,142,142,.5)'); live.setAttribute('stroke', '#d92d20'); live.setAttribute('stroke-width', '2'); live.setAttribute('vector-effect', 'non-scaling-stroke');
+      svg.appendChild(live);
+    });
+    svg.addEventListener('pointermove', (e) => {
+      if (!start || !live) return;
+      const p = rel(e);
+      live.setAttribute('x', Math.min(start.x, p.x)); live.setAttribute('y', Math.min(start.y, p.y));
+      live.setAttribute('width', Math.abs(p.x - start.x)); live.setAttribute('height', Math.abs(p.y - start.y));
+    });
+    const finish = (e) => {
+      if (!start) return;
+      const p = rel(e);
+      const dxPx = Math.abs(p.x - start.x) * p.w, dyPx = Math.abs(p.y - start.y) * p.h;
+      if (live) live.remove();
+      live = null;
+      if (dxPx < 8 && dyPx < 8) {
+        // tap: toggle selection of the topmost box under the finger
+        for (let i = masks.length - 1; i >= 0; i--) {
+          const m = masks[i];
+          if (p.x >= m.left && p.x <= m.left + m.width && p.y >= m.top && p.y <= m.top + m.height) {
+            if (selected.has(i)) selected.delete(i); else selected.add(i);
+            break;
+          }
+        }
+      } else if (dxPx >= 6 && dyPx >= 6) {
+        snapshot();
+        const ord = Math.max(0, ...masks.map((m) => m.ord)) + 1;
+        masks.push({ ord, shape: 'rect', left: Math.min(start.x, p.x), top: Math.min(start.y, p.y), width: Math.abs(p.x - start.x), height: Math.abs(p.y - start.y), raw: null });
+        selected.clear();
+      }
+      start = null;
+      draw();
+    };
+    svg.addEventListener('pointerup', finish);
+    svg.addEventListener('pointercancel', () => { if (live) live.remove(); live = null; start = null; });
+
+    if (image) setImage(image); else draw();
+    return {
+      el,
+      hasContent: () => !!image && masks.length > 0,
+      problem: () => (!image ? 'Choose an image first' : !masks.length ? 'Drag across at least one label to hide it' : null),
+      getFields: () => [buildOcclusion(masks, hideAll), '<img src="' + T.escapeHtml(image) + '">', plainToHtml(header.value), plainToHtml(extra.value), ''],
+      reset: () => { image = null; masks = []; selected.clear(); history.length = 0; header.value = ''; extra.value = ''; img.removeAttribute('src'); draw(); },
+    };
+  }
+  async function storeImageFile(file) {
+    const ext = ((file.name || '').match(/\.(\w{1,5})$/) || [, (file.type.split('/')[1] || 'png')])[1].toLowerCase().replace('jpeg', 'jpg');
+    const name = 'img-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6) + '.' + ext;
+    await DB.putMedia(name, file);
+    return name;
+  }
+  function imageNameFromField(html) {
+    const m = /<img[^>]*src\s*=\s*["']?([^"'>\s]+)/i.exec(html || '');
+    return m ? T.decodeEntities(m[1]) : null;
+  }
+
+  root.IO = { ioEditor, parseMasks, buildOcclusion, imageNameFromField, storeImageFile };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
 /* ---- apkg.js ---- */
 /*
  * Import Anki packages (.apkg shared decks, .colpkg collections), both the legacy format
@@ -6765,13 +7271,42 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     'Q: Which Java keyword stops a loop immediately?',
     'A: break',
   ].join('\n');
-  function load() {
+  // A simple animal-cell diagram (drawn here, no copyright issues) for the image occlusion sample.
+  const CELL_SVG = [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400" font-family="Helvetica, Arial, sans-serif">',
+    '<rect width="640" height="400" fill="#ffffff"/>',
+    '<ellipse cx="250" cy="200" rx="200" ry="150" fill="#fde8d7" stroke="#c2410c" stroke-width="5"/>',
+    '<circle cx="230" cy="190" r="55" fill="#c7d2fe" stroke="#4338ca" stroke-width="4"/>',
+    '<circle cx="240" cy="180" r="16" fill="#6366f1"/>',
+    '<ellipse cx="350" cy="275" rx="45" ry="20" fill="#fecaca" stroke="#b91c1c" stroke-width="3"/>',
+    '<path d="M318 275 q8 -14 16 0 t16 0 t16 0 t16 0" fill="none" stroke="#b91c1c" stroke-width="2.5"/>',
+    '<g fill="#475569"><circle cx="140" cy="250" r="5"/><circle cx="155" cy="265" r="5"/><circle cx="128" cy="270" r="5"/><circle cx="160" cy="240" r="5"/></g>',
+    '<g stroke="#334155" stroke-width="2"><line x1="282" y1="170" x2="480" y2="90"/><line x1="390" y1="272" x2="480" y2="205"/><line x1="430" y1="250" x2="480" y2="320"/><line x1="130" y1="262" x2="60" y2="340"/></g>',
+    '<g font-size="22" fill="#0f172a"><text x="486" y="97">Nucleus</text><text x="486" y="212">Mitochondrion</text><text x="486" y="327">Cell membrane</text><text x="14" y="368">Ribosomes</text></g>',
+    '</svg>',
+  ].join('');
+  // boxes over the four labels, in relative coordinates (Anki's format)
+  const CELL_MASKS = [[480 / 640, 72 / 400, 100 / 640, 34 / 400], [480 / 640, 187 / 400, 156 / 640, 34 / 400], [480 / 640, 302 / 400, 156 / 640, 34 / 400], [8 / 640, 343 / 400, 114 / 640, 34 / 400]];
+  async function load() {
     const parsed = root.Importer.parse(SAMPLE, {});
     const res = root.Backup.importParsed(parsed.notes, { skipDup: true });
-    root.UI.toast('Sample deck added (' + res.cards + ' cards)');
+    let extra = 0;
+    try {
+      const io = root.Col.stockNotetype('io');
+      const name = 'sample-animal-cell.svg';
+      await root.DB.putMedia(name, new Blob([CELL_SVG], { type: 'image/svg+xml' }));
+      root.UI.forgetMediaUrl(name);
+      const occl = root.IO.buildOcclusion(CELL_MASKS.map((m, i) => ({ ord: i + 1, shape: 'rect', left: m[0], top: m[1], width: m[2], height: m[3], raw: null })), true);
+      root.DB.begin('Sample');
+      const deck = root.Col.ensureDeck('Sample::Biology');
+      const r = root.Col.addNoteInner(io.id, [occl, '<img src="' + name + '">', 'Label the parts of the animal cell', 'Mitochondria make most of the cell\'s ATP.', ''], ['sample', 'bio'], deck.id, 'html');
+      root.DB.commit();
+      extra = r.cards ? r.cards.length : 0;
+    } catch (e) { console.error(e); }
+    root.UI.toast('Sample deck added (' + (res.cards + extra) + ' cards)');
     root.UI.render();
   }
-  root.Samples = { load, SAMPLE };
+  root.Samples = { load, SAMPLE, CELL_SVG };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---- main.js ---- */

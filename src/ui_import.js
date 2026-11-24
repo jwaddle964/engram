@@ -79,12 +79,32 @@
     const deckIn = h('input', { type: 'text', value: curDeck && curDeck.id !== 1 ? curDeck.name : '', placeholder: 'e.g. AIME::Number Theory', autocapitalize: 'off' });
     const countIn = h('input', { type: 'number', value: '25', min: '1', max: '500', inputmode: 'numeric' });
     const levelIn = h('input', { type: 'text', placeholder: 'optional, e.g. high school, AIME qualifier', value: root.__lastLevel || '' });
-    const styleState = new Set(['basic', 'cloze']);
-    const styleChips = h('div', { class: 'chips' }, [['basic', 'Q & A'], ['cloze', 'Cloze'], ['reversed', 'Two-way'], ['typein', 'Type answer']].map(([k, l]) => {
+    const PRESETS = root.ClaudePrompt.PRESETS;
+    let preset = PRESETS[root.__preset] ? root.__preset : 'general';
+    const styleState = new Set(PRESETS[preset].styles);
+    const styleDefs = [['basic', 'Q & A'], ['cloze', 'Cloze'], ['reversed', 'Two-way'], ['typein', 'Type answer']];
+    const styleChips = h('div', { class: 'chips' }, styleDefs.map(([k, l]) => {
       const b = h('button', { class: 'chip' + (styleState.has(k) ? ' on' : ''), type: 'button', onclick: () => { if (styleState.has(k)) styleState.delete(k); else styleState.add(k); b.classList.toggle('on', styleState.has(k)); } }, l);
       return b;
     }));
-    const promptText = () => root.ClaudePrompt.buildPrompt({ topic: topic.value, deck: deckIn.value, count: countIn.value, level: levelIn.value, styles: Array.from(styleState) });
+    const topicLabel = h('span', null, 'What should the cards cover?');
+    const presetChips = h('div', { class: 'chips' }, Object.entries(PRESETS).map(([k, v]) => h('button', { class: 'chip' + (k === preset ? ' on' : ''), type: 'button', 'data-preset': k, onclick: () => applyPreset(k) }, v.label)));
+    function applyPreset(k) {
+      preset = k; root.__preset = k;
+      const pr = PRESETS[k];
+      presetChips.querySelectorAll('.chip').forEach((c) => c.classList.toggle('on', c.getAttribute('data-preset') === k));
+      topic.placeholder = pr.placeholder;
+      topic.rows = k === 'mistake' ? 6 : 2;
+      topicLabel.textContent = k === 'mistake' ? 'The problem you missed' : 'What should the cards cover?';
+      countIn.type = k === 'mistake' ? 'text' : 'number';
+      countIn.value = pr.count;
+      styleState.clear(); pr.styles.forEach((x) => styleState.add(x));
+      styleChips.querySelectorAll('.chip').forEach((c, i) => c.classList.toggle('on', styleState.has(styleDefs[i][0])));
+      if (k === 'mistake' && !deckIn.value) deckIn.placeholder = 'Mistakes';
+      else deckIn.placeholder = 'e.g. AIME::Number Theory';
+      promptBox.classList.add('hidden');
+    }
+    const promptText = () => root.ClaudePrompt.buildPrompt({ preset, topic: topic.value, deck: deckIn.value, count: countIn.value, level: levelIn.value, styles: Array.from(styleState) });
     const promptBox = h('div', { class: 'prompt-box hidden' });
     const copyBtn = h('button', { class: 'btn primary', type: 'button', onclick: async () => {
       root.__lastTopic = topic.value; root.__lastLevel = levelIn.value;
@@ -94,7 +114,8 @@
     const showBtn = h('button', { class: 'btn', type: 'button', onclick: () => { promptBox.textContent = promptText(); promptBox.classList.toggle('hidden'); } }, 'Show prompt');
     view.appendChild(h('div', { class: 'panel' },
       h('div', { class: 'step-h' }, h('span', { class: 'step-n' }, '1'), 'Ask Claude for cards'),
-      h('label', { class: 'field' }, h('span', null, 'What should the cards cover?'), topic),
+      h('div', { class: 'small muted' }, 'What are you studying?'), presetChips,
+      h('label', { class: 'field' }, topicLabel, topic),
       h('div', { class: 'row' },
         h('label', { class: 'field grow' }, h('span', null, 'Deck'), deckIn),
         h('label', { class: 'field', style: { width: '110px' } }, h('span', null, 'How many'), countIn)),
@@ -103,6 +124,7 @@
       h('div', { class: 'row', style: { marginTop: '8px' } }, copyBtn, showBtn),
       promptBox,
       h('p', { class: 'help' }, 'Paste the prompt into Claude. You can also attach notes, a PDF or photos of your textbook in the same message. Claude replies with one code block: tap its copy button.')));
+    applyPreset(preset);
 
     // ---- step 2+3: paste & preview
     const ta = h('textarea', { class: 'mono', rows: 8, placeholder: 'Paste Claude\'s reply here (the whole code block).', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });

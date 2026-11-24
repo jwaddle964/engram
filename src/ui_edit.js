@@ -153,39 +153,70 @@
   }
 
   // ---------- add ----------
+  function tagsField(initial) {
+    const input = h('input', { type: 'text', value: (initial || []).join(' '), placeholder: 'tags separated by spaces', autocapitalize: 'off', autocorrect: 'off', spellcheck: 'false' });
+    return { el: h('div', { class: 'fld' }, h('div', { class: 'fld-head' }, h('b', null, 'Tags')), input), get: () => input.value.split(/[\s,]+/).filter(Boolean) };
+  }
   route('/add', (app) => {
-    let ntid = (C.meta.addNotetype && C.notetypes.get(C.meta.addNotetype)) ? C.meta.addNotetype : Col.stockNotetype('basic').id;
+    const ntid0 = (C.meta.addNotetype && C.notetypes.get(C.meta.addNotetype)) ? C.meta.addNotetype : Col.stockNotetype('basic').id;
     let did = root.__addDeck || (C.meta.addDeck && C.decks.get(C.meta.addDeck) ? C.meta.addDeck : (C.decks.get(C.meta.curDeck) ? C.meta.curDeck : 1));
     root.__addDeck = null;
     const ntSel = h('select', { 'aria-label': 'Note type' }, Col.notetypesSorted().map((n) => h('option', { value: String(n.id) }, n.name)));
-    ntSel.value = String(ntid);
+    ntSel.value = String(ntid0);
     const deckBtn = h('button', { class: 'btn block', type: 'button', style: { justifyContent: 'space-between' } });
     const setDeckLabel = () => { deckBtn.innerHTML = ''; deckBtn.append(h('span', null, (C.decks.get(did) || { name: 'Default' }).name), icon('chevron')); };
     setDeckLabel();
     deckBtn.addEventListener('click', async () => { const d = await deckPicker('Add to deck', did); if (d) { did = d; setDeckLabel(); } });
     let added = 0;
+    const counter = h('span', { class: 'muted small' });
+    const wrap = h('div');
+    let ed = null, io = null, ioTags = null;
+    const curNt = () => C.notetypes.get(Number(ntSel.value));
+    const mount = () => {
+      wrap.innerHTML = '';
+      const nt = curNt();
+      if (Col.isImageOcclusion(nt)) {
+        const lastTags = ed ? ed.tags() : ioTags ? ioTags.get() : [];
+        io = root.IO.ioEditor({});
+        ioTags = tagsField(lastTags);
+        ed = null;
+        wrap.append(io.el, ioTags.el);
+      } else if (ed) ed.setNotetype(nt.id);
+      else {
+        io = null;
+        ed = noteEditor({ ntid: nt.id, fields: [], tags: ioTags ? ioTags.get() : [], onSubmit: submit });
+        wrap.append(ed.el);
+      }
+      if (!Col.isImageOcclusion(nt) && ed && !wrap.contains(ed.el)) wrap.append(ed.el);
+    };
     const submit = () => {
-      const values = ed.values();
-      const tags = ed.tags();
-      const r = Col.addNote(Number(ntSel.value), values, tags, did, 'md');
+      const nt = curNt();
+      let values, tags, fmt;
+      if (io) {
+        const prob = io.problem();
+        if (prob) { toast(prob); return; }
+        values = io.getFields(); tags = ioTags.get(); fmt = 'html';
+      } else { values = ed.values(); tags = ed.tags(); fmt = 'md'; }
+      const r = Col.addNote(nt.id, values, tags, did, fmt);
       if (r.error) { toast(r.error); return; }
       added++;
-      DB.begin('pref', { undoable: false }); DB.update('meta', 'col', (m) => { m.addNotetype = Number(ntSel.value); m.addDeck = did; }); DB.commit();
+      DB.begin('pref', { undoable: false }); DB.update('meta', 'col', (m) => { m.addNotetype = nt.id; m.addDeck = did; }); DB.commit();
       rememberTags(tags);
       toast('Added ' + r.cards.length + ' card' + (r.cards.length === 1 ? '' : 's'), { label: 'Undo', fn: () => { DB.undo(); toast('Removed'); } });
-      ed.clear();
-      ed.focus();
+      if (io) io.reset(); else { ed.clear(); ed.focus(); }
       counter.textContent = added + ' added this session';
     };
-    const ed = noteEditor({ ntid, fields: [], tags: (C.meta.recentTags || []).slice(0, 0), onSubmit: submit });
-    ntSel.addEventListener('change', () => ed.setNotetype(Number(ntSel.value)));
-    const counter = h('span', { class: 'muted small' });
-    app.appendChild(topbar('Add', iconBtn('back', 'Back', () => back('/')), h('button', { class: 'icon-btn', type: 'button', onclick: () => previewNote(ed.nt(), ed.values(), 'md', did, ed.tags()) }, icon('eye'), 'Preview')));
+    ntSel.addEventListener('change', () => { if (!Col.isImageOcclusion(curNt()) && io) { io = null; ed = null; } mount(); });
+    mount();
+    app.appendChild(topbar('Add', iconBtn('back', 'Back', () => back('/')), h('button', { class: 'icon-btn', type: 'button', onclick: () => {
+      if (io) { const prob = io.problem(); if (prob) { toast(prob); return; } previewNote(curNt(), io.getFields(), 'html', did, ioTags.get()); }
+      else previewNote(ed.nt(), ed.values(), 'md', did, ed.tags());
+    } }, icon('eye'), 'Preview')));
     app.appendChild(h('main', { class: 'view' },
       h('div', { class: 'row' }, h('label', { class: 'field grow' }, h('span', null, 'Type'), ntSel), h('label', { class: 'field grow' }, h('span', null, 'Deck'), deckBtn)),
-      ed.el,
+      wrap,
       h('div', { class: 'sticky-bottom' }, h('button', { class: 'btn primary block', type: 'button', onclick: submit }, icon('plus'), 'Add'), h('div', { style: { textAlign: 'center', marginTop: '6px' } }, counter))));
-    setTimeout(() => { if (!/iPhone|iPad|Android/.test(navigator.userAgent)) ed.focus(); }, 50);
+    setTimeout(() => { if (ed && !/iPhone|iPad|Android/.test(navigator.userAgent)) ed.focus(); }, 50);
   });
 
   // ---------- edit ----------
@@ -195,16 +226,24 @@
     if (!note) { toast('Note not found'); back('/browse'); return; }
     const nt = C.notetypes.get(note.ntid);
     const cards = Col.cardsOfNote(nid);
+    const isIO = Col.isImageOcclusion(nt);
+    let ioEd = null, ioTags = null;
+    if (isIO) {
+      ioEd = root.IO.ioEditor({ image: root.IO.imageNameFromField(note.fields[1]), occlusion: note.fields[0], header: note.fields[2], backExtra: note.fields[3] });
+      ioTags = tagsField(note.tags);
+    }
+    const values = () => (isIO ? ioEd.getFields().map((v, i) => (i === 4 ? note.fields[4] || '' : v)) : ed.values());
     const save = () => {
-      const r = Col.updateNote(nid, ed.values(), ed.tags());
+      if (isIO) { const prob = ioEd.problem(); if (prob) { toast(prob); return; } }
+      const r = Col.updateNote(nid, values(), isIO ? ioTags.get() : ed.tags());
       if (r.error) { toast(r.error); return; }
-      rememberTags(ed.tags());
+      rememberTags(isIO ? ioTags.get() : ed.tags());
       toast('Saved' + (r.added ? ', ' + r.added + ' card(s) added' : '') + (r.removed ? ', ' + r.removed + ' card(s) removed' : ''));
       back('/browse');
     };
-    const ed = noteEditor({ ntid: note.ntid, fields: note.fields, tags: note.tags, fmt: note.fmt, nid, onSubmit: save });
+    const ed = isIO ? null : noteEditor({ ntid: note.ntid, fields: note.fields, tags: note.tags, fmt: note.fmt, nid, onSubmit: save });
     app.appendChild(topbar('Edit note', iconBtn('back', 'Cancel', () => back('/browse')), h('div', { class: 'row', style: { gap: 0 } },
-      iconBtn('eye', 'Preview', () => previewNote(nt, ed.values(), note.fmt, cards[0] ? cards[0].did : 1, ed.tags())),
+      iconBtn('eye', 'Preview', () => previewNote(nt, values(), note.fmt, cards[0] ? cards[0].did : 1, isIO ? ioTags.get() : ed.tags())),
       iconBtn('trash', 'Delete note', async () => {
         if (!await confirmDialog('Delete this note and its ' + cards.length + ' card' + (cards.length === 1 ? '' : 's') + '?', 'Delete', true)) return;
         Col.deleteNotes([nid]);
@@ -216,7 +255,7 @@
         h('div', { class: 's' }, (C.decks.get(c.did) || {}).name + ' · ' + dueLabel(c))), icon('info'))));
     app.appendChild(h('main', { class: 'view' },
       h('div', { class: 'muted small' }, nt.name),
-      ed.el,
+      isIO ? [ioEd.el, ioTags.el] : ed.el,
       h('div', { class: 'section-title' }, 'Cards'), cardList,
       h('div', { class: 'row', style: { marginTop: '10px' } },
         h('button', { class: 'btn', onclick: async () => { const d = await deckPicker('Move cards to', cards[0] && cards[0].did); if (d) { Col.moveCards(cards.map((c) => c.id), d); toast('Moved'); root.UI.render(); } } }, icon('deck'), 'Change deck')),

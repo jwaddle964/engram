@@ -5,7 +5,7 @@ SRC, VEND, DIST = os.path.join(ROOT, 'src'), os.path.join(ROOT, 'vendor'), os.pa
 KATEX = os.path.join(VEND, 'katex-0.16.11', 'dist')
 HLJS = os.path.join(VEND, 'hljs')
 APP_FILES = ['fsrs.js', 'text.js', 'importer.js', 'db.js', 'col.js', 'prompt.js', 'ui_core.js', 'ui_views.js', 'ui_edit.js',
-             'ui_import.js', 'ui_settings.js', 'ui_stats.js', 'apkg.js', 'optimizer.js', 'samples.js', 'main.js']
+             'ui_import.js', 'ui_settings.js', 'ui_stats.js', 'ui_io.js', 'apkg.js', 'optimizer.js', 'samples.js', 'main.js']
 VERSION = '1.0.0'
 
 def read(p, mode='r'):

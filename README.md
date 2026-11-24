@@ -30,8 +30,25 @@ the file to Files / iCloud Drive / Google Drive. **Restore backup** on a new pho
 4. Back in Engram, tap **Paste** (or long-press the box and Paste). You see a live preview with any
    problems listed, then tap **Import**.
 
-Tip: put the prompt (see `CLAUDE_PROMPT.md`) into a Claude Project's instructions. Then you only type
-"make 30 cards on modular inverses" in that project and paste the result.
+Pick what you're studying first: **General**, **Biology & science**, **Competition math**,
+**School math**, **Vocabulary**, or **Missed problem**. Each one changes how Claude writes the cards
+(for example, biology breaks processes into one step per card; competition math makes formula-with-
+conditions and "if you see X, try Y" cards instead of full solutions).
+
+**Missed problem** is for contest practice: paste a problem you got wrong, your attempt, and the
+solution. Claude tells you whether it was a concept gap, the wrong tool, or an arithmetic slip, then
+makes 2 to 5 cards on the idea you missed. Doing this for every missed AMC/AIME problem is one of the
+highest-value uses of the app.
+
+Tip: put the Project version of the prompt (see `CLAUDE_PROMPT.md`) into a Claude Project's
+instructions. Then you only type "30 cards on cellular respiration" in that project and paste the result.
+
+## Diagrams (image occlusion, great for biology)
+
+Add > Type **Image Occlusion** > choose a diagram or take a photo of your textbook > drag a box over
+each label. Each box becomes a card: the hidden label is red, you name it, then reveal. "Hide all,
+guess one" covers every label so neighbours don't give hints. Tap boxes to select them, **Group** to
+hide several together as one card. Image occlusion decks shared for Anki import and work too.
 
 ### Card text format
 
@@ -62,6 +79,18 @@ tags: java
   JSON `[{"front": "...", "back": "..."}]`, Anki packages `.apkg` / `.colpkg` (shared decks from
   AnkiWeb work, with images and audio), and Engram backups.
 
+## How to use it well
+
+- **Biology / science / history facts:** this is where spaced repetition shines. Make cards right after
+  class, do your reviews every day (10 to 20 minutes), and keep new cards at a pace you can sustain
+  (20 a day is plenty).
+- **Competition math:** cards do not replace solving problems. Use them for formulas with their
+  conditions, technique triggers, and Missed problem cards, so the ideas you learn while practicing
+  stick. Most of your time should still go to timed problem sets.
+- **School math:** definitions, theorem conditions, procedure steps, and common-mistake cards.
+- **If a card keeps failing** (it gets tagged "leech"), rewrite it smaller instead of grinding it.
+- Don't skip days: the scheduler assumes you review when cards are due.
+
 ## What it does (same as Anki)
 
 - **FSRS-6** memory model with Anki's defaults (21 parameters, desired retention 90%, max interval
@@ -71,7 +100,7 @@ tags: java
 - Day starts at 4 AM (configurable), learn-ahead limit, daily new/review limits that respect
   subdecks, new-card/review mixing and the same display-order options, sibling burying, leeches.
 - Note types: Basic, Basic (and reversed), Basic (optional reversed), Basic (type in the answer),
-  Cloze, plus any custom note type imported from Anki (templates, CSS, `{{hint:}}`, `{{type:}}`,
+  Cloze, Image Occlusion (same format as Anki's, rectangles, ellipses and polygons), plus any custom note type imported from Anki (templates, CSS, `{{hint:}}`, `{{type:}}`,
   `{{cloze:}}`, `{{text:}}`, furigana, `{{tts}}`, conditionals).
 - Study screen with Again/Hard/Good/Easy and the next interval on each button, undo, flags,
   bury, suspend, set due date, reset, card info with full review history, edit while studying.
@@ -87,7 +116,7 @@ tags: java
 ## Not included (honest list)
 
 - Sync between devices (use backup/restore to move data).
-- Image occlusion, add-ons, card template editor UI (imported templates work), LaTeX-to-image
+- Add-ons, card template editor UI (imported templates work), LaTeX-to-image
   (math uses KaTeX instead of MathJax; nearly everything renders the same).
 - Filtered decks that reschedule cards: Engram's custom study sessions are practice only and
   do not change your schedule.

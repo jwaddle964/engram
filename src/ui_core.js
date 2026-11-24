@@ -260,6 +260,12 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 .hint { color: #2563eb; }
 .tts-btn, .sound-btn { border: 1px solid #c9c9cf; background: transparent; border-radius: 999px; width: 38px; height: 38px; font-size: 18px; vertical-align: middle; cursor: pointer; color: inherit; }
 .template-error, .empty-card { color: #c62828; font-size: 16px; }
+#image-occlusion-container { position: relative; display: inline-block; max-width: 100%; line-height: 0; margin: 6px auto; }
+#image-occlusion-container img { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; }
+#image-occlusion-canvas { display: none; }
+.io-overlay { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.io-text { position: absolute; line-height: 1.2; background: rgba(255,255,255,.85); color: #111; padding: 1px 3px; font-size: 14px; white-space: pre; }
+#toggle { margin-top: 10px; border: 1px solid #c9c9cf; border-radius: 8px; background: transparent; color: inherit; padding: 6px 12px; font-size: 15px; cursor: pointer; }
 .replay-button svg { width: 32px; height: 32px; }
 `;
   /** Render a card side into a shadow-root host. Returns {typeInput, expected} */
@@ -336,12 +342,77 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       const list = side === 'a' && opts.skipFront ? sounds.slice(opts.skipFront) : sounds;
       if (list.length) playSound(list[0].getAttribute('data-sound'));
     }
+    const ioc = cardDiv.querySelector('#image-occlusion-container');
+    if (ioc) setupImageOcclusion(cardDiv, ioc);
     const typeInput = cardDiv.querySelector('input[data-typeans]');
     if (side === 'a') {
       const ans = cardDiv.querySelector('#answer');
       if (ans && opts.scrollToAnswer) setTimeout(() => { try { ans.scrollIntoView({ block: 'start' }); } catch (e) { /* ignore */ } }, 0);
     }
     return { typeInput, expected: typeAnswer ? typeAnswer.expected : null, soundCount: sounds.length };
+  }
+  /** Draw Anki image-occlusion masks (rendered as hidden data divs by the cloze filter) over the image. */
+  const SVGNS = 'http://www.w3.org/2000/svg';
+  function ioShapes(root) {
+    const out = [];
+    for (const el of root.querySelectorAll('div.cloze[data-shape], div.cloze-inactive[data-shape], div.cloze-highlight[data-shape]')) {
+      const d = el.dataset;
+      const kind = el.classList.contains('cloze') ? 'active' : el.classList.contains('cloze-highlight') ? 'highlight' : 'inactive';
+      out.push({ kind, shape: d.shape, left: parseFloat(d.left) || 0, top: parseFloat(d.top) || 0, width: parseFloat(d.width) || 0, height: parseFloat(d.height) || 0,
+        rx: parseFloat(d.rx) || 0, ry: parseFloat(d.ry) || 0, points: d.points || '', text: d.text || '', oi: d.occludeinactive === '1', fill: d.fill || null, ordinal: d.ordinal });
+    }
+    return out;
+  }
+  function setupImageOcclusion(cardDiv, ioc) {
+    const canvas = ioc.querySelector('canvas'); if (canvas) canvas.remove();
+    const img = ioc.querySelector('img');
+    if (!img) { ioc.textContent = 'No image to show.'; return; }
+    const shapes = ioShapes(cardDiv);
+    const absolute = shapes.some((sh) => [sh.left, sh.top, sh.width, sh.height].some((v) => v > 1.5));
+    const svg = document.createElementNS(SVGNS, 'svg');
+    svg.setAttribute('class', 'io-overlay');
+    svg.setAttribute('viewBox', '0 0 1 1');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    if (absolute) {
+      const fit = () => { if (img.naturalWidth) svg.setAttribute('viewBox', '0 0 ' + img.naturalWidth + ' ' + img.naturalHeight); };
+      img.addEventListener('load', fit); fit();
+    }
+    const inactiveGroup = document.createElementNS(SVGNS, 'g');
+    const mk = (sh) => {
+      let el;
+      if (sh.shape === 'ellipse') {
+        el = document.createElementNS(SVGNS, 'ellipse');
+        el.setAttribute('cx', sh.left + sh.rx); el.setAttribute('cy', sh.top + sh.ry); el.setAttribute('rx', sh.rx); el.setAttribute('ry', sh.ry);
+      } else if (sh.shape === 'polygon') {
+        el = document.createElementNS(SVGNS, 'polygon');
+        el.setAttribute('points', sh.points);
+      } else {
+        el = document.createElementNS(SVGNS, 'rect');
+        el.setAttribute('x', sh.left); el.setAttribute('y', sh.top); el.setAttribute('width', sh.width); el.setAttribute('height', sh.height);
+      }
+      el.setAttribute('vector-effect', 'non-scaling-stroke');
+      return el;
+    };
+    for (const sh of shapes) {
+      if (sh.shape === 'text') {
+        if (!sh.text) continue;
+        const t = h('div', { class: 'io-text', style: { left: (absolute ? 0 : sh.left * 100) + '%', top: (absolute ? 0 : sh.top * 100) + '%' } }, sh.text);
+        ioc.appendChild(t);
+        continue;
+      }
+      if (sh.kind === 'inactive' && !sh.oi) continue;
+      const el = mk(sh);
+      if (sh.kind === 'active') { el.setAttribute('fill', '#ff8e8e'); el.setAttribute('stroke', '#212121'); el.setAttribute('stroke-width', '1'); svg.appendChild(el); }
+      else if (sh.kind === 'inactive') { el.setAttribute('fill', sh.fill && sh.fill !== '#ffeba2' ? sh.fill : '#ffeba2'); el.setAttribute('stroke', '#212121'); el.setAttribute('stroke-width', '1'); inactiveGroup.appendChild(el); }
+      else { el.setAttribute('fill', 'none'); el.setAttribute('stroke', '#ff5c5c'); el.setAttribute('stroke-width', '2.5'); svg.appendChild(el); }
+    }
+    svg.insertBefore(inactiveGroup, svg.firstChild);
+    ioc.appendChild(svg);
+    const toggle = cardDiv.querySelector('#toggle');
+    if (toggle) {
+      if (shapes.some((sh) => sh.oi)) toggle.addEventListener('click', (e) => { e.stopPropagation(); inactiveGroup.style.display = inactiveGroup.style.display === 'none' ? '' : 'none'; });
+      else toggle.style.display = 'none';
+    }
   }
   let currentAudio = null;
   async function playSound(name) {

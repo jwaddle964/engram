@@ -301,9 +301,64 @@
     return c.nodes.map((n) => (n.cloze ? clozedText(n.cloze) : n.text)).join('');
   }
   const encAttr = (s) => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // ---- image occlusion (port of rslib/src/image_occlusion/imageocclusion.rs) ----
+  function splitUnescapedColon(s) {
+    const out = []; let cur = '';
+    for (let i = 0; i < s.length; i++) {
+      if (s[i] === '\\' && s[i + 1] === ':') { cur += '\\:'; i++; continue; }
+      if (s[i] === ':') { out.push(cur); cur = ''; continue; }
+      cur += s[i];
+    }
+    out.push(cur);
+    return out;
+  }
+  const ioUnescape = (v) => v.replace(/\\:/g, ':');
+  function parseImageCloze(text) {
+    const k = text.indexOf(':');
+    if (k === -1) return null;
+    const shape = text.slice(0, k);
+    const props = [];
+    for (const p of splitUnescapedColon(text.slice(k + 1))) {
+      const e = p.indexOf('=');
+      if (e === -1) continue;
+      props.push({ name: p.slice(0, e), value: ioUnescape(p.slice(e + 1)) });
+    }
+    return { shape, props };
+  }
+  function getImageClozeData(text) {
+    const o = parseImageCloze(text);
+    if (!o) return '';
+    let r = '';
+    if (['rect', 'ellipse', 'polygon', 'text'].includes(o.shape)) r += 'data-shape="' + o.shape + '" ';
+    const zero = (v) => v === '' || v === '0';
+    for (const { name, value } of o.props) {
+      if (['left', 'top', 'angle', 'fill'].includes(name)) { if (value !== '') r += 'data-' + name + '="' + value + '" '; }
+      else if (['width', 'height', 'rx', 'ry', 'scale'].includes(name)) { if (!zero(value)) r += 'data-' + name + '="' + value + '" '; }
+      else if (name === 'points') {
+        const pts = value.split(' ').filter((pp) => pp.includes(',')).join(' ');
+        if (pts) r += 'data-points="' + pts + '" ';
+      } else if (name === 'oi') { if (value !== '') r += 'data-occludeInactive="' + value + '" '; }
+      else if (name === 'text') { if (value !== '') r += 'data-text="' + encAttr(value) + '" '; }
+      else if (name === 'fs') { if (value !== '') r += 'data-font-size="' + value + '" '; }
+    }
+    return r;
+  }
+  function renderImageOcclusion(text, question, active, ords) {
+    const o = ords.join(','), data = getImageClozeData(text);
+    if ((question && active) || ords.includes(0)) return '<div class="cloze" data-ordinal="' + o + '" ' + data + '></div>';
+    if (!active) return '<div class="cloze-inactive" data-ordinal="' + o + '" ' + data + '></div>';
+    if (!question && active) return '<div class="cloze-highlight" data-ordinal="' + o + '" ' + data + '></div>';
+    return '';
+  }
+  function imageOcclusionText(c) {
+    const first = c.nodes[0];
+    return first && !first.cloze && first.text.startsWith('image-occlusion:') ? first.text.slice('image-occlusion:'.length) : null;
+  }
   function revealCloze(c, ord, question, found) {
     const active = c.ords.includes(ord);
     if (active) found.v = true;
+    const io = imageOcclusionText(c);
+    if (io != null) return renderImageOcclusion(io, question, active, c.ords);
     const ordStr = c.ords.join(',');
     const inner = () => c.nodes.map((n) => (n.cloze ? revealCloze(n.cloze, ord, question, found) : n.text)).join('');
     if (question && active) {
@@ -514,7 +569,7 @@
     escapeHtml, decodeEntities, stripHtml, htmlToTextLine, mdToHtml, scanDollarMath,
     tokenizeCloze, parseClozes, revealClozeText, clozeFilter, revealClozeTextOnly, extractClozeForTyping,
     clozeNumbers, clozeProblems, stripHtmlInsideMath, fieldIsEmpty, parseTemplate, renderTemplate,
-    nonEmptyOrds, clozeOrds, compareAnswer, furigana,
+    nonEmptyOrds, clozeOrds, compareAnswer, furigana, getImageClozeData, parseImageCloze,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.TextLib = api;
