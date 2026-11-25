@@ -25,12 +25,6 @@
     view.appendChild(h('div', { class: 'today-line' }, st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.'));
     if (root.__storageWarning) view.appendChild(h('div', { class: 'banner' }, icon('info'), h('div', { class: 'grow' }, root.__storageWarning)));
     if (root.__updateReady) view.appendChild(h('div', { class: 'banner' }, h('div', { class: 'grow' }, 'An update is ready.'), h('button', { class: 'btn', onclick: () => location.reload() }, 'Reload')));
-    const daysSinceBackup = C.meta.lastBackup ? (Date.now() - C.meta.lastBackup) / 86400000 : Infinity;
-    if (totalCards >= 20 && daysSinceBackup > 7) {
-      view.appendChild(h('div', { class: 'banner' }, icon('info'),
-        h('div', { class: 'grow' }, C.meta.lastBackup ? 'Last backup was ' + Math.floor(daysSinceBackup) + ' days ago.' : 'Your cards only live on this device. Save a backup file now and then.'),
-        h('button', { class: 'btn', onclick: () => root.Backup.exportBackup() }, 'Back up')));
-    }
     if (!totalCards) {
       view.appendChild(h('div', { class: 'panel empty' },
         h('h2', null, 'Welcome to ' + APP),
