@@ -291,6 +291,25 @@ details.more > summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .sheet-row .katex-display { margin: 2px 0; overflow-x: auto; }
 .sheet-row ul, .sheet-row ol { margin: 2px 0; padding-left: 1.2em; }
 .sheet-tag { font-size: 12px; color: var(--muted); background: var(--surface2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+
+/* school hub */
+.hub-tests { display: flex; flex-direction: column; gap: 6px; }
+.hub-test { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; border: 1px solid var(--border); background: var(--surface2); border-radius: 12px; padding: 9px 12px; text-align: left; color: var(--text); font-size: 15px; }
+.hub-test-when { font-weight: 700; font-size: 13px; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.hub-test-when.soon { color: #b91c1c; background: #fee2e2; }
+.hub-test-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-test-due { font-size: 13px; color: var(--muted); white-space: nowrap; }
+.hub-acts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
+.hub-act { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 78px; padding: 8px 6px; border: 1px solid var(--border); background: var(--surface); border-radius: 14px; color: var(--text); font-size: 13px; font-weight: 560; line-height: 1.2; text-align: center; }
+.hub-act svg.ic { width: 24px; height: 24px; color: var(--accent); }
+.hub-act:active { background: var(--surface2); }
+
+:root[data-theme="dark"] .hub-test-when { color: #fcd34d; background: #3a2f12; }
+:root[data-theme="dark"] .hub-test-when.soon { color: #fca5a5; background: #3b1515; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .hub-test-when { color: #fcd34d; background: #3a2f12; }
+  :root:not([data-theme="light"]) .hub-test-when.soon { color: #fca5a5; background: #3b1515; }
+}
 </style>
 </head>
 <body>
@@ -1534,7 +1553,7 @@ aliases:["yml"],contains:l}}});const Ke=te;for(const e of Object.keys(Pe)){
 const n=e.replace("grmr_","").replace("_","-");Ke.registerLanguage(n,Pe[e])}
 return Ke}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);</script>
-<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (6f51c601c5)';
+<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (9ce142ee99)';
 
 /* ---- fsrs.js ---- */
 /*
@@ -4853,19 +4872,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const view = h('main', { class: 'view' });
     app.appendChild(view);
     const st = Col.todayStats();
-    if (totalCards) {
-      const sk = Col.streak(), goal = Col.dailyGoal();
-      const total = goal.done + goal.remaining;
-      const pct = total ? Math.round(goal.done / total * 100) : 100;
-      view.appendChild(h('div', { class: 'panel goal' },
-        h('div', { class: 'goal-row' },
-          h('div', { class: 'streak' + (sk.days ? ' on' : '') }, icon('flame'), h('b', null, String(sk.days)), h('span', null, sk.days === 1 ? 'day streak' : 'day streak')),
-          h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
-            h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))),
-        h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })),
-        h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '6px' } }, h('button', { class: 'btn', type: 'button', style: { minHeight: '34px', padding: '4px 12px', fontSize: '14px' }, onclick: () => go('/report') }, icon('chart'), 'Weekly report')),
-        h('div', { class: 'today-line', style: { margin: '8px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.')));
-    } else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
+    if (totalCards) view.appendChild(schoolHub(st));
+    else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
     if (root.__storageWarning) view.appendChild(h('div', { class: 'banner' }, icon('info'), h('div', { class: 'grow' }, root.__storageWarning)));
     if (root.__updateReady) view.appendChild(h('div', { class: 'banner' }, h('div', { class: 'grow' }, 'An update is ready.'), h('button', { class: 'btn', onclick: () => location.reload() }, 'Reload')));
     if (!totalCards) {
@@ -4910,6 +4918,53 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
         DB.begin('Add Deck'); Col.ensureDeck(name); DB.commit(); root.UI.render();
       } }, icon('deck'), 'Create deck')));
   });
+
+  // ---------- school hub (top of the home screen) ----------
+  function schoolHub(st) {
+    const sk = Col.streak(), goal = Col.dailyGoal();
+    const total = goal.done + goal.remaining;
+    const pct = total ? Math.round(goal.done / total * 100) : 100;
+    const box = h('div', { class: 'panel goal hub' });
+    box.appendChild(h('div', { class: 'goal-row' },
+      h('div', { class: 'streak' + (sk.days ? ' on' : '') }, icon('flame'), h('b', null, String(sk.days)), h('span', null, 'day streak')),
+      h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
+        h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))));
+    box.appendChild(h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })));
+    // upcoming tests
+    const tm = Col.timing();
+    const tests = Array.from(C.decks.values()).filter((d) => d.testDay != null && d.testDay > tm.today).sort((a, b) => a.testDay - b.testDay);
+    if (tests.length) {
+      const list = h('div', { class: 'hub-tests' });
+      for (const d of tests) {
+        const n = d.testDay - tm.today;
+        const c = Col.deckCounts(d.id);
+        list.appendChild(h('button', { class: 'hub-test', type: 'button', onclick: () => go('/deck/' + d.id) },
+          h('span', { class: 'hub-test-when' + (n <= 2 ? ' soon' : '') }, n === 1 ? 'Tomorrow' : 'In ' + n + ' days'),
+          h('span', { class: 'hub-test-name' }, d.name.split('::').slice(-2).join(' > ') + ' test'),
+          h('span', { class: 'hub-test-due' }, (c.new + c.learn + c.review) ? (c.new + c.learn + c.review) + ' to study' : 'on track')));
+      }
+      box.appendChild(h('div', { class: 'section-title', style: { margin: '14px 2px 6px' } }, 'Upcoming tests'));
+      box.appendChild(list);
+    }
+    // quick actions
+    const shown = Col.decksSorted().filter((d) => !(d.id === 1 && !Array.from(C.cards.values()).some((c) => c.did === 1) && !Col.deckDescendants(d, false).length));
+    const roots = shown.filter((d) => !d.name.includes('::'));
+    const act = (ic, label, fn) => h('button', { class: 'hub-act', type: 'button', onclick: fn }, icon(ic), h('span', null, label));
+    box.appendChild(h('div', { class: 'hub-acts' },
+      act('sparkle', 'Cards from class notes', () => { root.__preset = 'general'; go('/import'); }),
+      act('target', 'I missed a problem', () => { root.__preset = 'mistake'; go('/import'); }),
+      act('book', 'Formula sheets', () => {
+        if (roots.length === 1) { go('/sheet/' + roots[0].id); return; }
+        menu('Formula sheet for...', roots.map((d) => ({ label: d.name, icon: 'book', fn: () => go('/sheet/' + d.id) })));
+      }),
+      act('layers', 'Deck library', () => go('/library')),
+      act('chart', 'Weekly report', () => go('/report')),
+      act('calendar', 'Set a test date', () => {
+        menu('Which deck is the test on?', shown.map((d) => ({ label: d.name, icon: 'calendar', fn: () => go('/deck/' + d.id) })));
+      })));
+    box.appendChild(h('div', { class: 'today-line', style: { margin: '10px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.'));
+    return box;
+  }
 
   function deckMenu(d) {
     menu(d.name, [
@@ -5351,6 +5406,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
   route('/study/:did', (app, didStr) => {
     const did = Number(didStr);
     if (!C.decks.get(did)) { go('/', true); return; }
+    const backTo = '/deck/' + did;
     document.body.classList.add('studying');
     let card = null, side = 'q', shownAt = 0, rendered = null, waitTimer = null, timerTick = null, answering = false;
     const host = h('div', { class: 'card-host' });
@@ -5359,7 +5415,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const undoBtn = iconBtn('undo', 'Undo', () => doUndo());
     const bar = h('div', { class: 'answer-bar' });
     const askBtn = iconBtn('help', 'Ask Claude about this card', () => { if (card) askClaude(card); });
-    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go('/deck/' + did)), countsBox, askBtn, undoBtn, iconBtn('more', 'More', () => moreMenu()));
+    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go(backTo)), countsBox, askBtn, undoBtn, iconBtn('more', 'More', () => moreMenu()));
     const flagEl = h('span', { class: 'card-flag' });
     const wrap = h('div', { class: 'study' }, top, h('div', { style: { position: 'relative', flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } }, flagEl, scroll), bar);
     app.appendChild(wrap);
@@ -5504,7 +5560,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       else if (k === 'i') cardInfo(card.id);
       else if (k === '-') { Col.buryCards([card.id]); toast('Card buried'); next(); }
       else if (k === '@') { Col.suspendCards([card.id]); toast('Card suspended'); next(); }
-      else if (k === 'Escape') go('/deck/' + did);
+      else if (k === 'Escape') go(backTo);
     }
     document.addEventListener('keydown', onKey);
     host.addEventListener('click', (e) => {

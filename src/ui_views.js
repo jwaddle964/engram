@@ -22,19 +22,8 @@
     const view = h('main', { class: 'view' });
     app.appendChild(view);
     const st = Col.todayStats();
-    if (totalCards) {
-      const sk = Col.streak(), goal = Col.dailyGoal();
-      const total = goal.done + goal.remaining;
-      const pct = total ? Math.round(goal.done / total * 100) : 100;
-      view.appendChild(h('div', { class: 'panel goal' },
-        h('div', { class: 'goal-row' },
-          h('div', { class: 'streak' + (sk.days ? ' on' : '') }, icon('flame'), h('b', null, String(sk.days)), h('span', null, sk.days === 1 ? 'day streak' : 'day streak')),
-          h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
-            h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))),
-        h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })),
-        h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '6px' } }, h('button', { class: 'btn', type: 'button', style: { minHeight: '34px', padding: '4px 12px', fontSize: '14px' }, onclick: () => go('/report') }, icon('chart'), 'Weekly report')),
-        h('div', { class: 'today-line', style: { margin: '8px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.')));
-    } else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
+    if (totalCards) view.appendChild(schoolHub(st));
+    else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
     if (root.__storageWarning) view.appendChild(h('div', { class: 'banner' }, icon('info'), h('div', { class: 'grow' }, root.__storageWarning)));
     if (root.__updateReady) view.appendChild(h('div', { class: 'banner' }, h('div', { class: 'grow' }, 'An update is ready.'), h('button', { class: 'btn', onclick: () => location.reload() }, 'Reload')));
     if (!totalCards) {
@@ -79,6 +68,53 @@
         DB.begin('Add Deck'); Col.ensureDeck(name); DB.commit(); root.UI.render();
       } }, icon('deck'), 'Create deck')));
   });
+
+  // ---------- school hub (top of the home screen) ----------
+  function schoolHub(st) {
+    const sk = Col.streak(), goal = Col.dailyGoal();
+    const total = goal.done + goal.remaining;
+    const pct = total ? Math.round(goal.done / total * 100) : 100;
+    const box = h('div', { class: 'panel goal hub' });
+    box.appendChild(h('div', { class: 'goal-row' },
+      h('div', { class: 'streak' + (sk.days ? ' on' : '') }, icon('flame'), h('b', null, String(sk.days)), h('span', null, 'day streak')),
+      h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
+        h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))));
+    box.appendChild(h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })));
+    // upcoming tests
+    const tm = Col.timing();
+    const tests = Array.from(C.decks.values()).filter((d) => d.testDay != null && d.testDay > tm.today).sort((a, b) => a.testDay - b.testDay);
+    if (tests.length) {
+      const list = h('div', { class: 'hub-tests' });
+      for (const d of tests) {
+        const n = d.testDay - tm.today;
+        const c = Col.deckCounts(d.id);
+        list.appendChild(h('button', { class: 'hub-test', type: 'button', onclick: () => go('/deck/' + d.id) },
+          h('span', { class: 'hub-test-when' + (n <= 2 ? ' soon' : '') }, n === 1 ? 'Tomorrow' : 'In ' + n + ' days'),
+          h('span', { class: 'hub-test-name' }, d.name.split('::').slice(-2).join(' > ') + ' test'),
+          h('span', { class: 'hub-test-due' }, (c.new + c.learn + c.review) ? (c.new + c.learn + c.review) + ' to study' : 'on track')));
+      }
+      box.appendChild(h('div', { class: 'section-title', style: { margin: '14px 2px 6px' } }, 'Upcoming tests'));
+      box.appendChild(list);
+    }
+    // quick actions
+    const shown = Col.decksSorted().filter((d) => !(d.id === 1 && !Array.from(C.cards.values()).some((c) => c.did === 1) && !Col.deckDescendants(d, false).length));
+    const roots = shown.filter((d) => !d.name.includes('::'));
+    const act = (ic, label, fn) => h('button', { class: 'hub-act', type: 'button', onclick: fn }, icon(ic), h('span', null, label));
+    box.appendChild(h('div', { class: 'hub-acts' },
+      act('sparkle', 'Cards from class notes', () => { root.__preset = 'general'; go('/import'); }),
+      act('target', 'I missed a problem', () => { root.__preset = 'mistake'; go('/import'); }),
+      act('book', 'Formula sheets', () => {
+        if (roots.length === 1) { go('/sheet/' + roots[0].id); return; }
+        menu('Formula sheet for...', roots.map((d) => ({ label: d.name, icon: 'book', fn: () => go('/sheet/' + d.id) })));
+      }),
+      act('layers', 'Deck library', () => go('/library')),
+      act('chart', 'Weekly report', () => go('/report')),
+      act('calendar', 'Set a test date', () => {
+        menu('Which deck is the test on?', shown.map((d) => ({ label: d.name, icon: 'calendar', fn: () => go('/deck/' + d.id) })));
+      })));
+    box.appendChild(h('div', { class: 'today-line', style: { margin: '10px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.'));
+    return box;
+  }
 
   function deckMenu(d) {
     menu(d.name, [
@@ -520,6 +556,7 @@
   route('/study/:did', (app, didStr) => {
     const did = Number(didStr);
     if (!C.decks.get(did)) { go('/', true); return; }
+    const backTo = '/deck/' + did;
     document.body.classList.add('studying');
     let card = null, side = 'q', shownAt = 0, rendered = null, waitTimer = null, timerTick = null, answering = false;
     const host = h('div', { class: 'card-host' });
@@ -528,7 +565,7 @@
     const undoBtn = iconBtn('undo', 'Undo', () => doUndo());
     const bar = h('div', { class: 'answer-bar' });
     const askBtn = iconBtn('help', 'Ask Claude about this card', () => { if (card) askClaude(card); });
-    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go('/deck/' + did)), countsBox, askBtn, undoBtn, iconBtn('more', 'More', () => moreMenu()));
+    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go(backTo)), countsBox, askBtn, undoBtn, iconBtn('more', 'More', () => moreMenu()));
     const flagEl = h('span', { class: 'card-flag' });
     const wrap = h('div', { class: 'study' }, top, h('div', { style: { position: 'relative', flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } }, flagEl, scroll), bar);
     app.appendChild(wrap);
@@ -673,7 +710,7 @@
       else if (k === 'i') cardInfo(card.id);
       else if (k === '-') { Col.buryCards([card.id]); toast('Card buried'); next(); }
       else if (k === '@') { Col.suspendCards([card.id]); toast('Card suspended'); next(); }
-      else if (k === 'Escape') go('/deck/' + did);
+      else if (k === 'Escape') go(backTo);
     }
     document.addEventListener('keydown', onKey);
     host.addEventListener('click', (e) => {
