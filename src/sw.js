@@ -31,6 +31,22 @@ self.addEventListener('fetch', (event) => {
     })());
     return;
   }
+  if (url.pathname.includes('/library/')) {
+    // deck library: always try the network first so new packs show up, fall back to the cached copy offline
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone()).catch(() => {});
+        return res;
+      } catch (e) {
+        const hit = await cache.match(req, { ignoreSearch: true });
+        if (hit) return hit;
+        throw e;
+      }
+    })());
+    return;
+  }
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const hit = await cache.match(req, { ignoreSearch: true });

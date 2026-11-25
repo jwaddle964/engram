@@ -331,6 +331,7 @@
     if (!await confirmDialog(msg, 'Restore', true)) return;
     const media = (obj.media || []).map((m) => ({ name: m.name, blob: b64ToBlob(m.b64, m.type) }));
     await DB.replaceAll(obj.data, media);
+    root.UI.forgetAllMediaUrls();
     Col.ensureDefaults();
     root.UI.applyTheme();
     toast('Backup restored');

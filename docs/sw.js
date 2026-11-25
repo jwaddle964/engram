@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell, serve it cache-first, update in the background. */
-const VERSION = 'de4b5b0dda';
+const VERSION = '6f51c601c5';
 const CACHE = 'engram-' + VERSION;
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 const OPTIONAL = ['./vendor/jszip.min.js', './vendor/sql-wasm.js', './vendor/sql-wasm.wasm', './vendor/fzstd.js'];
@@ -28,6 +28,22 @@ self.addEventListener('fetch', (event) => {
       const hit = await cache.match('./index.html');
       if (hit) return hit;
       try { return await fetch(req); } catch (e) { return new Response('Offline', { status: 503 }); }
+    })());
+    return;
+  }
+  if (url.pathname.includes('/library/')) {
+    // deck library: always try the network first so new packs show up, fall back to the cached copy offline
+    event.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const res = await fetch(req);
+        if (res.ok) cache.put(req, res.clone()).catch(() => {});
+        return res;
+      } catch (e) {
+        const hit = await cache.match(req, { ignoreSearch: true });
+        if (hit) return hit;
+        throw e;
+      }
     })());
     return;
   }

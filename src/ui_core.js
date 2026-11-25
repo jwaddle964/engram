@@ -200,6 +200,7 @@
     mediaUrls.set(name, url);
     return url;
   }
+  function forgetAllMediaUrls() { for (const u of mediaUrls.values()) if (u) URL.revokeObjectURL(u); mediaUrls.clear(); }
   function forgetMediaUrl(name) { const u = mediaUrls.get(name); if (u) URL.revokeObjectURL(u); mediaUrls.delete(name); }
   const isExternal = (src) => /^(https?:|data:|blob:)/i.test(src);
 
@@ -541,7 +542,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 
   root.UI = {
     h, append, icon, iconBtn, topbar, toast, sheet, menu, closeTopSheet, confirmDialog, promptDialog, deckPicker,
-    applyTheme, isDark, mediaUrl, forgetMediaUrl, renderCard, playSound, stopAudio, speak, sanitizeInto,
+    applyTheme, isDark, mediaUrl, forgetMediaUrl, forgetAllMediaUrls, renderCard, playSound, stopAudio, speak, sanitizeInto,
     route, go, back, render, fmtDuration, fmtDate, fmtDateTime, dueLabel, downloadBlob, copyText, autoGrow,
     openSheets,
   };
