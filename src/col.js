@@ -383,10 +383,13 @@
     for (const d of subtree) {
       const conf = confFor(d.id);
       const t = deckToday(d, tm.today);
-      rem.set(d.id, {
+      const r = {
         newL: Math.max(0, conf.newPerDay + (t.extendNew || 0) - t.newDone),
         revL: Math.max(0, conf.revPerDay + (t.extendRev || 0) - t.revDone),
-      });
+      };
+      const tp = testPlan(d, tm.today);
+      if (tp) { r.newL = Math.max(r.newL, tp.perDay - t.newDone); r.revL = Infinity; }
+      rem.set(d.id, r);
     }
     const learnCutoff = tm.nowSec + (C.meta.learnAhead || 0) * 60;
     const learn = [], dayLearn = [], reviews = [], news = [];
@@ -589,7 +592,7 @@
     const collapse = (C.meta.learnAhead || 0) * 60;
     const out = {};
     for (const k of ['again', 'hard', 'good', 'easy']) {
-      const ik = F.intervalKind(states[k], tm.secsUntilRollover);
+      const ik = F.intervalKind(capForTest(card, states[k], tm), tm.secsUntilRollover);
       const secs = ik.secs != null ? ik.secs : ik.days * 86400;
       out[k] = secs === 0 ? 'End' : (secs < collapse ? '<' : '') + formatIvlSecs(secs);
     }
@@ -612,7 +615,7 @@
     const tm = timing(now);
     const { conf, ctx, cur } = schedulingContext(card, tm);
     const states = F.nextStatesForCurrent(cur, ctx);
-    const next = states[RATING[rating]];
+    const next = capForTest(card, states[RATING[rating]], tm);
     const fromQueue = card.queue;
     const seed = F.fuzzSeed(card.id, card.reps);
     DB.begin('Answer Card', { extra: { cardId } });
@@ -763,6 +766,101 @@
     bumpToday(deck, tm.today, (t) => { t.extendNew = (t.extendNew || 0) + newExtra; t.extendRev = (t.extendRev || 0) + revExtra; });
     DB.commit();
   }
+  // ---------- test dates ----------
+  /** Earliest upcoming test day for a deck (its own or a parent's). */
+  function testDayFor(did, today) {
+    const d = C.decks.get(did);
+    if (!d) return null;
+    let best = null;
+    for (const x of [d].concat(deckParents(d))) if (x.testDay != null && x.testDay > today) best = best == null ? x.testDay : Math.min(best, x.testDay);
+    return best;
+  }
+  /** Never schedule a review past the day before the test. */
+  function capForTest(card, state, tm) {
+    const T = testDayFor(card.did, tm.today);
+    if (T == null || state.kind !== 'review') return state;
+    const cap = Math.max(1, T - 1 - tm.today);
+    return state.scheduledDays > cap ? Object.assign({}, state, { scheduledDays: cap }) : state;
+  }
+  /** For a deck whose cards (or some of them) have a test coming: how many new cards per day are needed. */
+  function testPlan(deck, today) {
+    let newCount = 0, T = null;
+    for (const d of deckDescendants(deck, true)) {
+      const td = testDayFor(d.id, today);
+      if (td == null) continue;
+      T = T == null ? td : Math.min(T, td);
+      for (const c of C.cards.values()) if (c.did === d.id && c.queue === 0) newCount++;
+    }
+    if (T == null) return null;
+    const daysLeft = Math.max(1, T - today);
+    const t = deckToday(deck, today);
+    return { testDay: T, daysLeft, newLeft: newCount, perDay: Math.ceil((newCount + t.newDone) / daysLeft) };
+  }
+  /** Set or clear a deck's test date; pulls in reviews scheduled after the test. Returns cards moved. */
+  function setTestDate(did, day) {
+    const tm = timing();
+    DB.begin(day == null ? 'Remove Test Date' : 'Set Test Date');
+    DB.update('decks', did, (d) => { if (day == null) delete d.testDay; else d.testDay = day; });
+    let moved = 0;
+    if (day != null && day > tm.today) {
+      const last = Math.max(tm.today, day - 1);
+      const ids = new Set(deckDescendants(C.decks.get(did), true).map((d) => d.id));
+      for (const c of C.cards.values()) {
+        if (!ids.has(c.did) || (c.queue !== 2 && c.queue !== 3) || c.due <= last) continue;
+        const span = last - tm.today;
+        const due = span <= 0 ? tm.today : tm.today + 1 + (F.hash32(c.id + 'test') % span);
+        DB.update('cards', c.id, (x) => { x.due = due; });
+        moved++;
+      }
+    }
+    DB.commit();
+    return moved;
+  }
+
+  // ---------- progress, streak, daily goal ----------
+  function deckProgress(deck) {
+    const ids = new Set(deckDescendants(deck, true).map((d) => d.id));
+    const p = { total: 0, new: 0, learning: 0, young: 0, mature: 0, suspended: 0 };
+    for (const c of C.cards.values()) {
+      if (!ids.has(c.did)) continue;
+      if (c.queue === -1) { p.suspended++; continue; }
+      p.total++;
+      if (c.type === 0) p.new++;
+      else if (c.type === 1 || c.type === 3) p.learning++;
+      else if (c.ivl >= 21) p.mature++;
+      else p.young++;
+    }
+    return p;
+  }
+  function studyDays() {
+    const days = new Set();
+    for (const r of C.revlog.values()) if (r.ease > 0 && r.type !== 4) days.add(dayNumber(r.id));
+    return days;
+  }
+  function streak() {
+    const days = studyDays();
+    const today = timing().today;
+    const studiedToday = days.has(today);
+    let n = 0;
+    for (let d = studiedToday ? today : today - 1; days.has(d); d--) n++;
+    return { days: n, studiedToday };
+  }
+  function dailyGoal() {
+    const tm = timing();
+    const start = dayStart(tm.today);
+    const seen = new Set();
+    for (const r of C.revlog.values()) if (r.id >= start && r.ease > 0 && r.type !== 4) seen.add(r.cid);
+    let remaining = 0, learning = 0;
+    for (const d of C.decks.values()) {
+      if (d.name.includes('::')) continue;
+      const c = deckCounts(d.id);
+      remaining += c.new + c.review;
+      learning += c.learn;
+    }
+    // learning cards already studied today are part of "done"; the total stays stable while you study
+    return { done: seen.size, remaining, learning };
+  }
+
   function todayStats() {
     const tm = timing();
     const start = dayStart(tm.today);
@@ -921,7 +1019,7 @@
     addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,
-    todayStats, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,
+    todayStats, testDayFor, capForTest, testPlan, setTestDate, deckProgress, streak, dailyGoal, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,
   };
   if (isNode) module.exports = api;
   else root.Col = api;

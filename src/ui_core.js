@@ -67,6 +67,9 @@
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     play: '<path d="M7 4l13 8-13 8z"/>',
     home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+    flame: '<path d="M12 22c4 0 7-2.7 7-6.6 0-3.2-2-5.4-3.6-7.2-.3 1.6-1.2 2.8-2.4 3.4.4-3.4-1.2-6.6-4-8.6.2 3.4-1.6 5.6-3.2 7.6C4.6 12.4 5 14 5 15.4 5 19.3 8 22 12 22z"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/>',
   };
   function icon(name) {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');

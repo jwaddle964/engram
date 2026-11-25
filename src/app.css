@@ -229,3 +229,23 @@ details.more > summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .io-edit-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .io-labels { position: absolute; inset: 0; pointer-events: none; }
 .io-num { position: absolute; transform: translate(2px, 2px); background: #212121; color: #fff; font: 600 11px/1 var(--font); padding: 2px 4px; border-radius: 4px; }
+
+/* home goal + streak */
+.goal { padding: 12px 14px; }
+.goal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.streak { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.streak svg.ic { width: 24px; height: 24px; }
+.streak.on svg.ic { color: #f08c00; fill: #fde68a; }
+.streak b { font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+.streak span, .goal-text span { font-size: 13px; color: var(--muted); }
+.goal-text { text-align: right; display: flex; flex-direction: column; }
+.goal-text b { font-size: 17px; }
+.goal-bar { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; margin-top: 10px; }
+.goal-bar i { display: block; height: 100%; background: var(--review); border-radius: 999px; transition: width .3s; }
+.test-badge { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 1px 8px; vertical-align: 2px; }
+:root[data-theme="dark"] .test-badge { color: #fcd34d; background: #3a2f12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .test-badge { color: #fcd34d; background: #3a2f12; } }
+/* deck progress */
+.prog-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface2); gap: 2px; }
+.prog-bar i { display: block; }
+.p-mature { background: #188038; } .p-young { background: #7cc48b; } .p-learning { background: #e5484d; } .p-new { background: #6aa3f8; }

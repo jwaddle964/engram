@@ -257,6 +257,26 @@ details.more > summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .io-edit-overlay { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
 .io-labels { position: absolute; inset: 0; pointer-events: none; }
 .io-num { position: absolute; transform: translate(2px, 2px); background: #212121; color: #fff; font: 600 11px/1 var(--font); padding: 2px 4px; border-radius: 4px; }
+
+/* home goal + streak */
+.goal { padding: 12px 14px; }
+.goal-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.streak { display: flex; align-items: center; gap: 6px; color: var(--muted); }
+.streak svg.ic { width: 24px; height: 24px; }
+.streak.on svg.ic { color: #f08c00; fill: #fde68a; }
+.streak b { font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+.streak span, .goal-text span { font-size: 13px; color: var(--muted); }
+.goal-text { text-align: right; display: flex; flex-direction: column; }
+.goal-text b { font-size: 17px; }
+.goal-bar { height: 8px; border-radius: 999px; background: var(--surface2); overflow: hidden; margin-top: 10px; }
+.goal-bar i { display: block; height: 100%; background: var(--review); border-radius: 999px; transition: width .3s; }
+.test-badge { display: inline-block; margin-left: 8px; font-size: 12px; font-weight: 600; color: #b45309; background: #fef3c7; border-radius: 999px; padding: 1px 8px; vertical-align: 2px; }
+:root[data-theme="dark"] .test-badge { color: #fcd34d; background: #3a2f12; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .test-badge { color: #fcd34d; background: #3a2f12; } }
+/* deck progress */
+.prog-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface2); gap: 2px; }
+.prog-bar i { display: block; }
+.p-mature { background: #188038; } .p-young { background: #7cc48b; } .p-learning { background: #e5484d; } .p-new { background: #6aa3f8; }
 </style>
 </head>
 <body>
@@ -1500,7 +1520,7 @@ aliases:["yml"],contains:l}}});const Ke=te;for(const e of Object.keys(Pe)){
 const n=e.replace("grmr_","").replace("_","-");Ke.registerLanguage(n,Pe[e])}
 return Ke}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);</script>
-<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (cbbbeeaa7d)';
+<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (254508b4ab)';
 
 /* ---- fsrs.js ---- */
 /*
@@ -3436,10 +3456,13 @@ return Ke}()
     for (const d of subtree) {
       const conf = confFor(d.id);
       const t = deckToday(d, tm.today);
-      rem.set(d.id, {
+      const r = {
         newL: Math.max(0, conf.newPerDay + (t.extendNew || 0) - t.newDone),
         revL: Math.max(0, conf.revPerDay + (t.extendRev || 0) - t.revDone),
-      });
+      };
+      const tp = testPlan(d, tm.today);
+      if (tp) { r.newL = Math.max(r.newL, tp.perDay - t.newDone); r.revL = Infinity; }
+      rem.set(d.id, r);
     }
     const learnCutoff = tm.nowSec + (C.meta.learnAhead || 0) * 60;
     const learn = [], dayLearn = [], reviews = [], news = [];
@@ -3642,7 +3665,7 @@ return Ke}()
     const collapse = (C.meta.learnAhead || 0) * 60;
     const out = {};
     for (const k of ['again', 'hard', 'good', 'easy']) {
-      const ik = F.intervalKind(states[k], tm.secsUntilRollover);
+      const ik = F.intervalKind(capForTest(card, states[k], tm), tm.secsUntilRollover);
       const secs = ik.secs != null ? ik.secs : ik.days * 86400;
       out[k] = secs === 0 ? 'End' : (secs < collapse ? '<' : '') + formatIvlSecs(secs);
     }
@@ -3665,7 +3688,7 @@ return Ke}()
     const tm = timing(now);
     const { conf, ctx, cur } = schedulingContext(card, tm);
     const states = F.nextStatesForCurrent(cur, ctx);
-    const next = states[RATING[rating]];
+    const next = capForTest(card, states[RATING[rating]], tm);
     const fromQueue = card.queue;
     const seed = F.fuzzSeed(card.id, card.reps);
     DB.begin('Answer Card', { extra: { cardId } });
@@ -3816,6 +3839,101 @@ return Ke}()
     bumpToday(deck, tm.today, (t) => { t.extendNew = (t.extendNew || 0) + newExtra; t.extendRev = (t.extendRev || 0) + revExtra; });
     DB.commit();
   }
+  // ---------- test dates ----------
+  /** Earliest upcoming test day for a deck (its own or a parent's). */
+  function testDayFor(did, today) {
+    const d = C.decks.get(did);
+    if (!d) return null;
+    let best = null;
+    for (const x of [d].concat(deckParents(d))) if (x.testDay != null && x.testDay > today) best = best == null ? x.testDay : Math.min(best, x.testDay);
+    return best;
+  }
+  /** Never schedule a review past the day before the test. */
+  function capForTest(card, state, tm) {
+    const T = testDayFor(card.did, tm.today);
+    if (T == null || state.kind !== 'review') return state;
+    const cap = Math.max(1, T - 1 - tm.today);
+    return state.scheduledDays > cap ? Object.assign({}, state, { scheduledDays: cap }) : state;
+  }
+  /** For a deck whose cards (or some of them) have a test coming: how many new cards per day are needed. */
+  function testPlan(deck, today) {
+    let newCount = 0, T = null;
+    for (const d of deckDescendants(deck, true)) {
+      const td = testDayFor(d.id, today);
+      if (td == null) continue;
+      T = T == null ? td : Math.min(T, td);
+      for (const c of C.cards.values()) if (c.did === d.id && c.queue === 0) newCount++;
+    }
+    if (T == null) return null;
+    const daysLeft = Math.max(1, T - today);
+    const t = deckToday(deck, today);
+    return { testDay: T, daysLeft, newLeft: newCount, perDay: Math.ceil((newCount + t.newDone) / daysLeft) };
+  }
+  /** Set or clear a deck's test date; pulls in reviews scheduled after the test. Returns cards moved. */
+  function setTestDate(did, day) {
+    const tm = timing();
+    DB.begin(day == null ? 'Remove Test Date' : 'Set Test Date');
+    DB.update('decks', did, (d) => { if (day == null) delete d.testDay; else d.testDay = day; });
+    let moved = 0;
+    if (day != null && day > tm.today) {
+      const last = Math.max(tm.today, day - 1);
+      const ids = new Set(deckDescendants(C.decks.get(did), true).map((d) => d.id));
+      for (const c of C.cards.values()) {
+        if (!ids.has(c.did) || (c.queue !== 2 && c.queue !== 3) || c.due <= last) continue;
+        const span = last - tm.today;
+        const due = span <= 0 ? tm.today : tm.today + 1 + (F.hash32(c.id + 'test') % span);
+        DB.update('cards', c.id, (x) => { x.due = due; });
+        moved++;
+      }
+    }
+    DB.commit();
+    return moved;
+  }
+
+  // ---------- progress, streak, daily goal ----------
+  function deckProgress(deck) {
+    const ids = new Set(deckDescendants(deck, true).map((d) => d.id));
+    const p = { total: 0, new: 0, learning: 0, young: 0, mature: 0, suspended: 0 };
+    for (const c of C.cards.values()) {
+      if (!ids.has(c.did)) continue;
+      if (c.queue === -1) { p.suspended++; continue; }
+      p.total++;
+      if (c.type === 0) p.new++;
+      else if (c.type === 1 || c.type === 3) p.learning++;
+      else if (c.ivl >= 21) p.mature++;
+      else p.young++;
+    }
+    return p;
+  }
+  function studyDays() {
+    const days = new Set();
+    for (const r of C.revlog.values()) if (r.ease > 0 && r.type !== 4) days.add(dayNumber(r.id));
+    return days;
+  }
+  function streak() {
+    const days = studyDays();
+    const today = timing().today;
+    const studiedToday = days.has(today);
+    let n = 0;
+    for (let d = studiedToday ? today : today - 1; days.has(d); d--) n++;
+    return { days: n, studiedToday };
+  }
+  function dailyGoal() {
+    const tm = timing();
+    const start = dayStart(tm.today);
+    const seen = new Set();
+    for (const r of C.revlog.values()) if (r.id >= start && r.ease > 0 && r.type !== 4) seen.add(r.cid);
+    let remaining = 0, learning = 0;
+    for (const d of C.decks.values()) {
+      if (d.name.includes('::')) continue;
+      const c = deckCounts(d.id);
+      remaining += c.new + c.review;
+      learning += c.learn;
+    }
+    // learning cards already studied today are part of "done"; the total stays stable while you study
+    return { done: seen.size, remaining, learning };
+  }
+
   function todayStats() {
     const tm = timing();
     const start = dayStart(tm.today);
@@ -3974,7 +4092,7 @@ return Ke}()
     addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,
-    todayStats, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,
+    todayStats, testDayFor, capForTest, testPlan, setTestDate, deckProgress, streak, dailyGoal, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,
   };
   if (isNode) module.exports = api;
   else root.Col = api;
@@ -4195,6 +4313,9 @@ return Ke}()
     clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
     play: '<path d="M7 4l13 8-13 8z"/>',
     home: '<path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/>',
+    flame: '<path d="M12 22c4 0 7-2.7 7-6.6 0-3.2-2-5.4-3.6-7.2-.3 1.6-1.2 2.8-2.4 3.4.4-3.4-1.2-6.6-4-8.6.2 3.4-1.6 5.6-3.2 7.6C4.6 12.4 5 14 5 15.4 5 19.3 8 22 12 22z"/>',
+    target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+    help: '<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17h.01"/>',
   };
   function icon(name) {
     const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -4692,7 +4813,18 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const view = h('main', { class: 'view' });
     app.appendChild(view);
     const st = Col.todayStats();
-    view.appendChild(h('div', { class: 'today-line' }, st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.'));
+    if (totalCards) {
+      const sk = Col.streak(), goal = Col.dailyGoal();
+      const total = goal.done + goal.remaining;
+      const pct = total ? Math.round(goal.done / total * 100) : 100;
+      view.appendChild(h('div', { class: 'panel goal' },
+        h('div', { class: 'goal-row' },
+          h('div', { class: 'streak' + (sk.days ? ' on' : '') }, icon('flame'), h('b', null, String(sk.days)), h('span', null, sk.days === 1 ? 'day streak' : 'day streak')),
+          h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
+            h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))),
+        h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })),
+        h('div', { class: 'today-line', style: { margin: '8px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.')));
+    } else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
     if (root.__storageWarning) view.appendChild(h('div', { class: 'banner' }, icon('info'), h('div', { class: 'grow' }, root.__storageWarning)));
     if (root.__updateReady) view.appendChild(h('div', { class: 'banner' }, h('div', { class: 'grow' }, 'An update is ready.'), h('button', { class: 'btn', onclick: () => location.reload() }, 'Reload')));
     if (!totalCards) {
@@ -4719,7 +4851,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       const tw = h('button', { class: 'twisty' + (d.collapsed ? ' collapsed' : ''), type: 'button', 'aria-label': d.collapsed ? 'Expand' : 'Collapse', style: { visibility: kids ? 'visible' : 'hidden', marginLeft: depth * 16 + 'px' },
         onclick: () => { DB.begin('Collapse', { undoable: false }); DB.update('decks', d.id, (x) => { x.collapsed = !x.collapsed; }); DB.commit(); root.UI.render(); } }, icon('chevron'));
       list.appendChild(h('div', { class: 'deck-row' }, tw,
-        h('button', { class: 'name', type: 'button', onclick: () => { DB.begin('cur', { undoable: false }); DB.update('meta', 'col', (m) => { m.curDeck = d.id; }); DB.commit(); go('/deck/' + d.id); } }, d.name.split('::').pop()),
+        h('button', { class: 'name', type: 'button', onclick: () => { DB.begin('cur', { undoable: false }); DB.update('meta', 'col', (m) => { m.curDeck = d.id; }); DB.commit(); go('/deck/' + d.id); } }, d.name.split('::').pop(),
+          d.testDay != null && d.testDay > Col.timing().today ? h('span', { class: 'test-badge' }, 'test ' + testWhen(d.testDay)) : null),
         countsEl(counts),
         iconBtn('more', 'Deck actions', () => deckMenu(d))));
     }
@@ -4788,6 +4921,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     view.appendChild(h('div', { class: 'row', style: { justifyContent: 'center' } },
       h('button', { class: 'btn', onclick: () => customStudy(did) }, icon('sparkle'), 'Custom study'),
       h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse')));
+    view.appendChild(testPanel(deck));
+    view.appendChild(progressPanel(deck));
     if (deck.desc) {
       const d = h('div', { class: 'panel desc' });
       root.UI.sanitizeInto(d, T.mdToHtml(deck.desc));
@@ -4800,6 +4935,107 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       DB.begin('Edit Description'); DB.update('decks', did, (x) => { x.desc = v; }); DB.commit(); root.UI.render();
     } }, deck.desc ? 'Edit description' : 'Add description')));
   });
+
+  function dayLabel(day) { return new Date(day * 86400000).toLocaleDateString(undefined, { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }); }
+  function testWhen(day) {
+    const n = day - Col.timing().today;
+    return n === 1 ? 'tomorrow' : 'in ' + n + 'd';
+  }
+  function testPanel(deck) {
+    const tm = Col.timing();
+    const own = deck.testDay != null && deck.testDay > tm.today ? deck.testDay : null;
+    const inherited = own == null ? Col.testDayFor(deck.id, tm.today) : null;
+    const panel = h('div', { class: 'panel' }, h('h2', null, 'Test date'));
+    const pick = async () => {
+      const r = await datePrompt(own);
+      if (r === undefined) return;
+      if (r === null) { Col.setTestDate(deck.id, null); toast('Test date removed'); root.UI.render(); return; }
+      if (r <= tm.today) { toast('Pick a date after today'); return; }
+      const moved = Col.setTestDate(deck.id, r);
+      toast('Test set for ' + dayLabel(r) + (moved ? '. ' + moved + ' card' + (moved === 1 ? '' : 's') + ' moved before it.' : ''));
+      root.UI.render();
+    };
+    if (own != null || inherited != null) {
+      const T = own != null ? own : inherited;
+      const plan = Col.testPlan(deck, tm.today);
+      const lines = [h('p', { style: { margin: '0 0 6px' } }, h('b', null, dayLabel(T)), ' (' + testWhen(T).replace(/^in /, 'in ').replace('d', ' days') + ')')];
+      lines.push(h('p', { class: 'help', style: { marginTop: 0 } }, 'Every card in this deck will come up again before the test.' + (plan && plan.newLeft ? ' To see all ' + plan.newLeft + ' new cards in time, new cards per day is raised to ' + plan.perDay + ' until then.' : '')));
+      panel.append(...lines);
+      if (own != null) panel.appendChild(h('div', { class: 'row' }, h('button', { class: 'btn', type: 'button', onclick: pick }, icon('calendar'), 'Change'), h('button', { class: 'btn', type: 'button', onclick: () => { Col.setTestDate(deck.id, null); toast('Test date removed'); root.UI.render(); } }, 'Remove')));
+      else panel.appendChild(h('p', { class: 'help' }, 'Set on a parent deck.'));
+    } else {
+      panel.appendChild(h('p', { class: 'help', style: { marginTop: 0 } }, 'Have a test on this? Set the date and every card in the deck gets reviewed before it.'));
+      panel.appendChild(h('button', { class: 'btn', type: 'button', onclick: pick }, icon('calendar'), 'Set test date'));
+    }
+    return panel;
+  }
+  /** Resolves to a day number, null (remove), or undefined (cancel). */
+  function datePrompt(current) {
+    return new Promise((resolve) => {
+      let done = false;
+      const fin = (v) => { if (!done) { done = true; resolve(v); } };
+      const iso = (day) => new Date(day * 86400000).toISOString().slice(0, 10);
+      const input = h('input', { type: 'date', min: iso(Col.timing().today + 1), value: current != null ? iso(current) : iso(Col.timing().today + 7), style: { fontSize: '18px' } });
+      const s = sheet(h('div', null, input, h('div', { class: 'sheet-actions' },
+        h('button', { class: 'btn', type: 'button', onclick: () => { fin(undefined); s.close(); } }, 'Cancel'),
+        h('button', { class: 'btn primary', type: 'button', onclick: () => {
+          const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.value);
+          if (!m) { toast('Pick a date'); return; }
+          fin(Math.floor(Date.UTC(+m[1], +m[2] - 1, +m[3]) / 86400000)); s.close();
+        } }, 'Save'))), { title: 'When is the test?', onClose: () => fin(undefined) });
+    });
+  }
+  function progressPanel(deck) {
+    const p = Col.deckProgress(deck);
+    const panel = h('div', { class: 'panel' }, h('h2', null, 'Progress'));
+    if (!p.total) { panel.appendChild(h('p', { class: 'help', style: { margin: 0 } }, 'No cards yet.')); return panel; }
+    const seg = (n, cls, label) => (n ? h('i', { class: cls, style: { width: (n / p.total * 100) + '%' }, title: label + ': ' + n }) : null);
+    const learned = p.young + p.mature;
+    panel.appendChild(h('div', { class: 'prog-bar' }, seg(p.mature, 'p-mature', 'Mature'), seg(p.young, 'p-young', 'Young'), seg(p.learning, 'p-learning', 'Learning'), seg(p.new, 'p-new', 'New')));
+    panel.appendChild(h('div', { class: 'legend' },
+      h('span', null, h('i', { class: 'p-mature' }), 'Mature ' + p.mature), h('span', null, h('i', { class: 'p-young' }), 'Young ' + p.young),
+      h('span', null, h('i', { class: 'p-learning' }), 'Learning ' + p.learning), h('span', null, h('i', { class: 'p-new' }), 'New ' + p.new)));
+    const tm = Col.timing();
+    const plan = Col.testPlan(deck, tm.today);
+    const perDay = plan ? plan.perDay : Col.confFor(deck.id).newPerDay;
+    const lines = [Math.round(learned / p.total * 100) + '% learned (' + learned + ' of ' + p.total + ' cards). Mature means you remembered it over a gap of 21+ days.'];
+    if (p.new && perDay > 0) {
+      const days = Math.ceil(p.new / perDay);
+      lines.push('At ' + perDay + ' new cards a day, you will have seen every card ' + (days <= 1 ? 'today' : 'by ' + dayLabel(tm.today + days - 1)) + '.');
+    }
+    if (p.suspended) lines.push(p.suspended + ' suspended card' + (p.suspended === 1 ? '' : 's') + ' not counted.');
+    for (const l of lines) panel.appendChild(h('p', { class: 'help' }, l));
+    return panel;
+  }
+
+  // ---------- ask Claude ----------
+  function cardForClaude(card) {
+    const note = C.notes.get(card.nid);
+    const nt = C.notetypes.get(note.ntid);
+    const deck = C.decks.get(card.did);
+    const val = (i) => (note.fmt === 'html' ? T.stripHtml(note.fields[i] || '') : (note.fields[i] || '')).trim();
+    const lines = ['I\'m studying this flashcard and don\'t fully get it.', '', 'Deck: ' + (deck ? deck.name : '')];
+    if (Col.isImageOcclusion(nt)) {
+      lines.push('It is a diagram card (label the hidden part of an image).');
+      if (val(2)) lines.push('Header: ' + val(2));
+      if (val(3)) lines.push('Extra: ' + val(3));
+    } else if (nt.kind === 'cloze') {
+      lines.push('It is a fill-in-the-blank card. The blank I am tested on is c' + (card.ord + 1) + ' in {{c' + (card.ord + 1) + '::...}}.');
+      lines.push('Text: ' + val(0));
+      if (val(1)) lines.push('Extra: ' + val(1));
+    } else {
+      const reversed = nt.templates.length > 1 && card.ord === 1;
+      const q = reversed ? val(1) : val(0), a = reversed ? val(0) : val(1);
+      lines.push('Question: ' + q, 'Answer: ' + a);
+    }
+    lines.push('', 'Explain it simply: what it means, why the answer is right, and one memory trick. Keep it short.',
+      'If the card itself is confusing or wrong, say so and give me a better version as a code block in this format:', 'Q: ...', 'A: ...');
+    return lines.join('\n');
+  }
+  async function askClaude(card) {
+    const ok = await root.UI.copyText(cardForClaude(card));
+    toast(ok ? 'Copied. Paste it into Claude.' : 'Could not copy', ok ? { label: 'Open Claude', fn: () => { window.open('https://claude.ai/new', '_blank'); } } : null);
+  }
 
   function congratsBlock(did, q) {
     const tm = Col.timing();
@@ -4829,7 +5065,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     const countsBox = h('div', { class: 'study-counts' });
     const undoBtn = iconBtn('undo', 'Undo', () => doUndo());
     const bar = h('div', { class: 'answer-bar' });
-    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go('/deck/' + did)), countsBox, undoBtn, iconBtn('more', 'More', () => moreMenu()));
+    const askBtn = iconBtn('help', 'Ask Claude about this card', () => { if (card) askClaude(card); });
+    const top = h('header', { class: 'topbar' }, iconBtn('back', 'Back', () => go('/deck/' + did)), countsBox, askBtn, undoBtn, iconBtn('more', 'More', () => moreMenu()));
     const flagEl = h('span', { class: 'card-flag' });
     const wrap = h('div', { class: 'study' }, top, h('div', { style: { position: 'relative', flex: '1', display: 'flex', flexDirection: 'column', minHeight: '0' } }, flagEl, scroll), bar);
     app.appendChild(wrap);
@@ -4931,6 +5168,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       const cur = card;
       const note = C.notes.get(cur.nid);
       menu('Card', [
+        { label: 'Ask Claude about this card', icon: 'help', fn: () => askClaude(cur) },
         { label: 'Edit note', icon: 'edit', fn: () => { root.__studyPrefer = cur.id; go('/edit/' + cur.nid); } },
         { label: 'Card info', icon: 'info', fn: () => cardInfo(cur.id) },
         { label: 'Flag', icon: 'flag', fn: () => flagMenu([cur.id], () => { next(cur.id); }) },
@@ -5138,7 +5376,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  root.Views = { cardInfo, flagMenu, customStudy, countsEl };
+  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---- ui_edit.js ---- */
