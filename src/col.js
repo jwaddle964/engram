@@ -333,6 +333,11 @@
     }
     return null;
   }
+  function duplicateMap(ntid) {
+    const m = new Map();
+    for (const n of C.notes.values()) if (n.ntid === ntid) m.set(T.htmlToTextLine(n.fmt === 'html' ? n.fields[0] : T.mdToHtml(n.fields[0])).toLowerCase(), n.id);
+    return m;
+  }
   function duplicateIndex(ntid) {
     const set = new Set();
     for (const n of C.notes.values()) if (n.ntid === ntid) set.add(T.htmlToTextLine(n.fmt === 'html' ? n.fields[0] : T.mdToHtml(n.fields[0])).toLowerCase());
@@ -1016,7 +1021,7 @@
     dayNumber, dayStart, timing, weekdayOfDay, ensureDefaults,
     decksSorted, deckByName, ensureDeck, normalizeDeckName, renameDeck, deleteDeck, deckParents, deckDescendants, parentName, confFor, deckToday,
     notetypeByName, stockNotetype, notetypesSorted, isImageOcclusion, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
-    addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
+    addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, duplicateMap, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,
     todayStats, testDayFor, capForTest, testPlan, setTestDate, deckProgress, streak, dailyGoal, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,

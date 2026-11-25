@@ -129,7 +129,8 @@
     view.appendChild(box);
     view.appendChild(h('div', { class: 'row', style: { justifyContent: 'center' } },
       h('button', { class: 'btn', onclick: () => customStudy(did) }, icon('sparkle'), 'Custom study'),
-      h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse')));
+      h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse'),
+      h('button', { class: 'btn', onclick: () => go('/hard/' + did) }, icon('target'), 'Hardest cards')));
     view.appendChild(testPanel(deck));
     view.appendChild(progressPanel(deck));
     if (deck.desc) {
@@ -216,6 +217,88 @@
     for (const l of lines) panel.appendChild(h('p', { class: 'help' }, l));
     return panel;
   }
+
+  // ---------- hardest cards ----------
+  function hardCards(deck) {
+    const ids = new Set(Col.deckDescendants(deck, true).map((d) => d.id));
+    const fails = new Map();
+    for (const r of C.revlog.values()) if (r.ease === 1) fails.set(r.cid, (fails.get(r.cid) || 0) + 1);
+    const out = [];
+    for (const c of C.cards.values()) {
+      if (!ids.has(c.did) || c.type === 0 || c.queue === -1) continue;
+      const note = C.notes.get(c.nid);
+      const leech = note.tags.some((t) => t.toLowerCase() === 'leech');
+      const d = c.mem ? c.mem.d : 5;
+      const againToday = fails.get(c.id) || 0;
+      const score = (leech ? 100 : 0) + c.lapses * 10 + againToday * 3 + d;
+      if (leech || c.lapses >= 2 || againToday >= 3 || (c.mem && d >= 8.5 && c.reps >= 3)) out.push({ c, note, score, leech, d, fails: Math.max(againToday, c.lapses) });
+    }
+    return out.sort((a, b) => b.score - a.score);
+  }
+  function fixPrompt(items) {
+    const lines = ['These flashcards keep tripping me up. For each one, figure out why it is hard (too much on one card, vague question, similar to another card, or I just do not understand it) and rewrite it into 1 to 3 better cards.', '',
+      'Rules: one fact per card, a clear question that says what kind of answer is expected, short answers, and a memory trick on the A: line when it helps.', '',
+      'Output ONLY one code block that starts with ````text and ends with ````, in this format (keep the same #deck lines):', '#deck: Deck Name', 'Q: question', 'A: answer', '', 'Here are the cards:', ''];
+    let lastDeck = null;
+    for (const it of items) {
+      const deck = C.decks.get(it.c.did);
+      if (deck && deck.name !== lastDeck) { lines.push('#deck: ' + deck.name); lastDeck = deck.name; }
+      const text = cardForClaude(it.c).split('\n').filter((l) => /^(Question|Answer|Text|Extra|Header): /.test(l));
+      lines.push(...text, '(I missed this ' + it.fails + ' time' + (it.fails === 1 ? '' : 's') + ')', '');
+    }
+    return lines.join('\n');
+  }
+  route('/hard/:did', (app, didStr) => {
+    const did = Number(didStr);
+    const deck = C.decks.get(did);
+    if (!deck) { go('/', true); return; }
+    app.appendChild(topbar('Hardest cards', iconBtn('back', 'Back', () => go('/deck/' + did))));
+    const view = h('main', { class: 'view' });
+    app.appendChild(view);
+    const items = hardCards(deck);
+    if (!items.length) {
+      view.appendChild(h('div', { class: 'panel empty' }, h('h2', null, 'No problem cards yet'), h('p', null, 'Cards show up here after you forget them a few times. That usually means the card is badly worded or asks too much at once, and Claude can rewrite it.')));
+      return;
+    }
+    const selected = new Set(items.slice(0, 15).map((it) => it.c.id));
+    const info = h('p', { class: 'help', style: { marginTop: 0 } });
+    const list = h('div', { class: 'browse-list' });
+    const draw = () => {
+      list.innerHTML = '';
+      info.textContent = items.length + ' card' + (items.length === 1 ? '' : 's') + ' you keep forgetting. ' + selected.size + ' selected.';
+      for (const it of items) {
+        const on = selected.has(it.c.id);
+        const row = h('div', { class: 'b-row' + (on ? ' sel' : '') }, h('input', { type: 'checkbox', checked: on, tabindex: -1 }),
+          h('div', { class: 'main' }, h('div', { class: 't' }, Col.sortFieldText(it.note) || '(image card)'),
+            h('div', { class: 's' }, [(C.decks.get(it.c.did) || {}).name, 'missed ' + it.fails + 'x', it.c.mem ? 'difficulty ' + Math.round((it.d - 1) / 9 * 100) + '%' : null, it.leech ? 'leech' : null].filter(Boolean).join(' \u00b7 '))));
+        row.addEventListener('click', () => { if (on) selected.delete(it.c.id); else selected.add(it.c.id); draw(); });
+        list.appendChild(row);
+      }
+    };
+    const chosen = () => items.filter((it) => selected.has(it.c.id));
+    view.append(
+      h('div', { class: 'panel' },
+        h('div', { class: 'step-h' }, h('span', { class: 'step-n' }, '1'), 'Copy a fix-it prompt'),
+        info,
+        h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+          if (!selected.size) { toast('Select at least one card'); return; }
+          const ok = await root.UI.copyText(fixPrompt(chosen()));
+          toast(ok ? 'Copied. Paste it into Claude.' : 'Could not copy', ok ? { label: 'Open Claude', fn: () => window.open('https://claude.ai/new', '_blank') } : null);
+        } }, icon('copy'), 'Copy prompt for Claude'),
+        h('div', { class: 'step-h', style: { marginTop: '14px' } }, h('span', { class: 'step-n' }, '2'), 'Paste Claude\'s new cards'),
+        h('p', { class: 'help', style: { marginTop: 0 } }, 'Copy Claude\'s code block, then use Import. After that, suspend the old versions here so you only study the new ones.'),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn', type: 'button', onclick: () => go('/import') }, icon('import'), 'Go to Import'),
+          h('button', { class: 'btn', type: 'button', onclick: async () => {
+            if (!selected.size) { toast('Select at least one card'); return; }
+            if (!await confirmDialog('Suspend the ' + selected.size + ' selected old card(s)? They stop showing up but are not deleted.', 'Suspend')) return;
+            Col.suspendCards(Array.from(selected));
+            toast('Suspended', { label: 'Undo', fn: () => { DB.undo(); root.UI.render(); } });
+            root.UI.render();
+          } }, icon('suspend'), 'Suspend old versions'))),
+      list);
+    draw();
+  });
 
   // ---------- ask Claude ----------
   function cardForClaude(card) {
@@ -585,5 +668,5 @@
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude };
+  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

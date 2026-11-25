@@ -67,6 +67,9 @@
     return spans;
   }
 
+  // a line made only of emoji is shown as a big picture
+  const EMOJI_LINE = /^(?:\p{Extended_Pictographic}|[\u200d\ufe0f\u20e3 ]|[\u{1F3FB}-\u{1F3FF}]|[\u{1F1E6}-\u{1F1FF}])+$/u;
+  const PICTO = /\p{Extended_Pictographic}/u;
   const SAFE_TAGS = /&lt;(\/?)(b|i|u|s|em|strong|sub|sup|mark|small|kbd|br|hr|big|del|ins)\s*\/?&gt;/gi;
 
   function mdInline(text, ph) {
@@ -115,8 +118,6 @@
       (m, pre, fence, lang, code) => pre + bph(renderCodeBlock(code, lang, opts.highlight)));
     // inline code
     s = s.replace(/``([^\n]+?)``|`([^`\n]+)`/g, (m, a, b) => ph('<code>' + escapeHtml(a != null ? a : b) + '</code>'));
-    // escaped dollar
-    s = s.replace(/\\\$/g, () => ph('$'));
     // display math
     s = s.replace(/\$\$([\s\S]+?)\$\$/g, (m, tex) => ph('\\[' + escapeHtml(tex) + '\\]'));
     s = s.replace(/\\\[([\s\S]+?)\\\]/g, (m, tex) => ph('\\[' + escapeHtml(tex) + '\\]'));
@@ -131,6 +132,8 @@
       }
       s = out + s.slice(last);
     }
+    // escaped dollar outside math is a literal $ (inside math it stays \$ for KaTeX)
+    s = s.replace(/\\\$/g, () => ph('$'));
 
     // block structure
     const lines = s.split('\n');
@@ -212,6 +215,7 @@
         items.push({ block: true, html });
         continue;
       }
+      if (EMOJI_LINE.test(trimmed) && PICTO.test(trimmed)) { items.push({ block: true, html: '<div class="emoji-pic">' + escapeHtml(trimmed) + '</div>' }); i++; continue; }
       items.push({ block: false, html: trimmed ? mdInline(line.replace(/^\s+/, (w) => w.replace(/ /g, ' ').replace(/\t/g, '    ')), ph) : '' });
       i++;
     }

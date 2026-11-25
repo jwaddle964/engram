@@ -263,6 +263,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 .hint { color: #2563eb; }
 .tts-btn, .sound-btn { border: 1px solid #c9c9cf; background: transparent; border-radius: 999px; width: 38px; height: 38px; font-size: 18px; vertical-align: middle; cursor: pointer; color: inherit; }
 .template-error, .empty-card { color: #c62828; font-size: 16px; }
+.emoji-pic { font-size: 76px; line-height: 1.15; margin: 10px 0 4px; letter-spacing: 4px; }
 #image-occlusion-container { position: relative; display: inline-block; max-width: 100%; line-height: 0; margin: 6px auto; }
 #image-occlusion-container img { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; }
 #image-occlusion-canvas { display: none; }

@@ -21,11 +21,24 @@
         while (fields.length < nt.fields.length) fields.push('');
         const deckName = n.deck || opts.defaultDeck || 'Default';
         const deck = Col.ensureDeck(deckName);
-        if (opts.skipDup !== false) {
-          if (!dupIdx.has(nt.id)) dupIdx.set(nt.id, Col.duplicateIndex(nt.id));
+        const mode = opts.dupMode || (opts.skipDup === false ? 'add' : 'skip');
+        if (mode !== 'add') {
+          if (!dupIdx.has(nt.id)) dupIdx.set(nt.id, Col.duplicateMap(nt.id));
           const key = T.htmlToTextLine(n.fmt === 'html' ? fields[0] : T.mdToHtml(fields[0])).toLowerCase();
-          if (dupIdx.get(nt.id).has(key)) { res.skipped++; continue; }
-          dupIdx.get(nt.id).add(key);
+          const existing = dupIdx.get(nt.id).get(key);
+          if (existing != null) {
+            const cur = C.notes.get(existing);
+            if (mode === 'update' && cur && existing > 0) {
+              const same = cur.fields.length === fields.length && cur.fields.every((f, k) => f === fields[k]) && (cur.fmt || 'md') === (n.fmt || 'md');
+              if (same) res.skipped++;
+              else {
+                DB.update('notes', existing, (x) => { x.fields = fields.slice(); x.fmt = n.fmt || 'md'; x.mod = Date.now(); x.tags = Col.normTags(x.tags.concat(n.tags || [], opts.extraTags || [])); });
+                res.updated = (res.updated || 0) + 1;
+              }
+            } else res.skipped++;
+            continue;
+          }
+          dupIdx.get(nt.id).set(key, -1);
         }
         const tags = (n.tags || []).concat(opts.extraTags || []);
         const r = Col.addNoteInner(nt.id, fields, tags, deck.id, n.fmt || 'md');
@@ -137,7 +150,7 @@
     setDefLabel();
     defDeckBtn.addEventListener('click', async () => { const d = await deckPicker('Deck for cards without a #deck line', defDeckId); if (d) { defDeckId = d; setDefLabel(); reparse(); } });
     const tagsIn = h('input', { type: 'text', placeholder: 'optional extra tags', autocapitalize: 'off' });
-    const skipDup = h('input', { type: 'checkbox', checked: true });
+    const dupSel = h('select', null, h('option', { value: 'skip' }, 'Skip it'), h('option', { value: 'update' }, 'Update it (keeps your progress)'), h('option', { value: 'add' }, 'Add it again'));
     const importBtn = h('button', { class: 'btn primary block', type: 'button', disabled: true }, icon('import'), 'Import');
     function reparse() {
       root.__pasteDraft = ta.value;
@@ -161,7 +174,7 @@
       if (!parsed.notes.length) return;
       const defDeck = (C.decks.get(defDeckId) || { name: 'Default' }).name;
       let res;
-      try { res = importParsed(parsed.notes, { defaultDeck: defDeck, extraTags: tagsIn.value.split(/[\s,]+/).filter(Boolean), skipDup: skipDup.checked }); }
+      try { res = importParsed(parsed.notes, { defaultDeck: defDeck, extraTags: tagsIn.value.split(/[\s,]+/).filter(Boolean), dupMode: dupSel.value }); }
       catch (e) { toast('Import failed: ' + e.message); return; }
       showImportResult(res);
       if (res.added) { ta.value = ''; root.__pasteDraft = ''; reparse(); }
@@ -173,7 +186,7 @@
       previewBox,
       h('label', { class: 'field' }, h('span', null, 'Deck for cards without a #deck line'), defDeckBtn),
       h('label', { class: 'field' }, h('span', null, 'Extra tags'), tagsIn),
-      h('label', { class: 'check' }, skipDup, h('span', null, 'Skip cards whose front already exists')),
+      h('label', { class: 'field' }, h('span', null, 'If a card with the same front already exists'), dupSel),
       importBtn));
     reparse();
 
@@ -209,6 +222,7 @@
 
   function showImportResult(res) {
     const parts = ['Imported ' + res.added + ' note' + (res.added === 1 ? '' : 's') + ' (' + res.cards + ' card' + (res.cards === 1 ? '' : 's') + ')'];
+    if (res.updated) parts.push(res.updated + ' existing card' + (res.updated === 1 ? '' : 's') + ' updated');
     if (res.skipped) parts.push(res.skipped + ' duplicate' + (res.skipped === 1 ? '' : 's') + ' skipped');
     if (res.failed.length) parts.push(res.failed.length + ' failed');
     const firstDeck = res.decks.size ? Array.from(res.decks.keys())[0] : null;
@@ -219,7 +233,7 @@
       h('div', { class: 'sheet-actions' },
         h('button', { class: 'btn', onclick: () => s.close() }, 'Import more'),
         firstDeck ? h('button', { class: 'btn primary', onclick: () => { s.close(); go('/deck/' + firstDeck); } }, 'Study') : null));
-    const s = sheet(body, { title: res.added ? 'Done' : 'Nothing imported' });
+    const s = sheet(body, { title: res.added || res.updated ? 'Done' : 'Nothing imported' });
   }
 
   async function importFile(f) {

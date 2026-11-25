@@ -1520,7 +1520,7 @@ aliases:["yml"],contains:l}}});const Ke=te;for(const e of Object.keys(Pe)){
 const n=e.replace("grmr_","").replace("_","-");Ke.registerLanguage(n,Pe[e])}
 return Ke}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);</script>
-<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (254508b4ab)';
+<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (584620c333)';
 
 /* ---- fsrs.js ---- */
 /*
@@ -1994,6 +1994,9 @@ return Ke}()
     return spans;
   }
 
+  // a line made only of emoji is shown as a big picture
+  const EMOJI_LINE = /^(?:\p{Extended_Pictographic}|[\u200d\ufe0f\u20e3 ]|[\u{1F3FB}-\u{1F3FF}]|[\u{1F1E6}-\u{1F1FF}])+$/u;
+  const PICTO = /\p{Extended_Pictographic}/u;
   const SAFE_TAGS = /&lt;(\/?)(b|i|u|s|em|strong|sub|sup|mark|small|kbd|br|hr|big|del|ins)\s*\/?&gt;/gi;
 
   function mdInline(text, ph) {
@@ -2042,8 +2045,6 @@ return Ke}()
       (m, pre, fence, lang, code) => pre + bph(renderCodeBlock(code, lang, opts.highlight)));
     // inline code
     s = s.replace(/``([^\n]+?)``|`([^`\n]+)`/g, (m, a, b) => ph('<code>' + escapeHtml(a != null ? a : b) + '</code>'));
-    // escaped dollar
-    s = s.replace(/\\\$/g, () => ph('$'));
     // display math
     s = s.replace(/\$\$([\s\S]+?)\$\$/g, (m, tex) => ph('\\[' + escapeHtml(tex) + '\\]'));
     s = s.replace(/\\\[([\s\S]+?)\\\]/g, (m, tex) => ph('\\[' + escapeHtml(tex) + '\\]'));
@@ -2058,6 +2059,8 @@ return Ke}()
       }
       s = out + s.slice(last);
     }
+    // escaped dollar outside math is a literal $ (inside math it stays \$ for KaTeX)
+    s = s.replace(/\\\$/g, () => ph('$'));
 
     // block structure
     const lines = s.split('\n');
@@ -2139,6 +2142,7 @@ return Ke}()
         items.push({ block: true, html });
         continue;
       }
+      if (EMOJI_LINE.test(trimmed) && PICTO.test(trimmed)) { items.push({ block: true, html: '<div class="emoji-pic">' + escapeHtml(trimmed) + '</div>' }); i++; continue; }
       items.push({ block: false, html: trimmed ? mdInline(line.replace(/^\s+/, (w) => w.replace(/ /g, ' ').replace(/\t/g, '    ')), ph) : '' });
       i++;
     }
@@ -3406,6 +3410,11 @@ return Ke}()
     }
     return null;
   }
+  function duplicateMap(ntid) {
+    const m = new Map();
+    for (const n of C.notes.values()) if (n.ntid === ntid) m.set(T.htmlToTextLine(n.fmt === 'html' ? n.fields[0] : T.mdToHtml(n.fields[0])).toLowerCase(), n.id);
+    return m;
+  }
   function duplicateIndex(ntid) {
     const set = new Set();
     for (const n of C.notes.values()) if (n.ntid === ntid) set.add(T.htmlToTextLine(n.fmt === 'html' ? n.fields[0] : T.mdToHtml(n.fields[0])).toLowerCase());
@@ -4089,7 +4098,7 @@ return Ke}()
     dayNumber, dayStart, timing, weekdayOfDay, ensureDefaults,
     decksSorted, deckByName, ensureDeck, normalizeDeckName, renameDeck, deleteDeck, deckParents, deckDescendants, parentName, confFor, deckToday,
     notetypeByName, stockNotetype, notetypesSorted, isImageOcclusion, fieldHtml, noteFieldsHtml, cardOrdsFor, sortFieldText,
-    addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, guid,
+    addNote, addNoteInner, updateNote, deleteNotes, cardsOfNote, allTags, normTags, findDuplicate, duplicateIndex, duplicateMap, guid,
     maybeUnbury, buildQueues, nextCard, deckCounts, intersperse, nextStatesFor, buttonLabels, formatIvlSecs, answerCard,
     suspendCards, unsuspendCards, toggleSuspend, buryCards, unburyCards, setFlag, moveCards, forgetCards, setDueDate, extendLimits,
     todayStats, testDayFor, capForTest, testPlan, setTestDate, deckProgress, streak, dailyGoal, searchCards, compileSearch, retrievabilityOf, schedulingContext, nextPosition, newCard, restoreQueue, uniqueRevlogId,
@@ -4509,6 +4518,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 .hint { color: #2563eb; }
 .tts-btn, .sound-btn { border: 1px solid #c9c9cf; background: transparent; border-radius: 999px; width: 38px; height: 38px; font-size: 18px; vertical-align: middle; cursor: pointer; color: inherit; }
 .template-error, .empty-card { color: #c62828; font-size: 16px; }
+.emoji-pic { font-size: 76px; line-height: 1.15; margin: 10px 0 4px; letter-spacing: 4px; }
 #image-occlusion-container { position: relative; display: inline-block; max-width: 100%; line-height: 0; margin: 6px auto; }
 #image-occlusion-container img { display: block; max-width: 100%; max-height: 72vh; width: auto; height: auto; }
 #image-occlusion-canvas { display: none; }
@@ -4920,7 +4930,8 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     view.appendChild(box);
     view.appendChild(h('div', { class: 'row', style: { justifyContent: 'center' } },
       h('button', { class: 'btn', onclick: () => customStudy(did) }, icon('sparkle'), 'Custom study'),
-      h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse')));
+      h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse'),
+      h('button', { class: 'btn', onclick: () => go('/hard/' + did) }, icon('target'), 'Hardest cards')));
     view.appendChild(testPanel(deck));
     view.appendChild(progressPanel(deck));
     if (deck.desc) {
@@ -5007,6 +5018,88 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     for (const l of lines) panel.appendChild(h('p', { class: 'help' }, l));
     return panel;
   }
+
+  // ---------- hardest cards ----------
+  function hardCards(deck) {
+    const ids = new Set(Col.deckDescendants(deck, true).map((d) => d.id));
+    const fails = new Map();
+    for (const r of C.revlog.values()) if (r.ease === 1) fails.set(r.cid, (fails.get(r.cid) || 0) + 1);
+    const out = [];
+    for (const c of C.cards.values()) {
+      if (!ids.has(c.did) || c.type === 0 || c.queue === -1) continue;
+      const note = C.notes.get(c.nid);
+      const leech = note.tags.some((t) => t.toLowerCase() === 'leech');
+      const d = c.mem ? c.mem.d : 5;
+      const againToday = fails.get(c.id) || 0;
+      const score = (leech ? 100 : 0) + c.lapses * 10 + againToday * 3 + d;
+      if (leech || c.lapses >= 2 || againToday >= 3 || (c.mem && d >= 8.5 && c.reps >= 3)) out.push({ c, note, score, leech, d, fails: Math.max(againToday, c.lapses) });
+    }
+    return out.sort((a, b) => b.score - a.score);
+  }
+  function fixPrompt(items) {
+    const lines = ['These flashcards keep tripping me up. For each one, figure out why it is hard (too much on one card, vague question, similar to another card, or I just do not understand it) and rewrite it into 1 to 3 better cards.', '',
+      'Rules: one fact per card, a clear question that says what kind of answer is expected, short answers, and a memory trick on the A: line when it helps.', '',
+      'Output ONLY one code block that starts with ````text and ends with ````, in this format (keep the same #deck lines):', '#deck: Deck Name', 'Q: question', 'A: answer', '', 'Here are the cards:', ''];
+    let lastDeck = null;
+    for (const it of items) {
+      const deck = C.decks.get(it.c.did);
+      if (deck && deck.name !== lastDeck) { lines.push('#deck: ' + deck.name); lastDeck = deck.name; }
+      const text = cardForClaude(it.c).split('\n').filter((l) => /^(Question|Answer|Text|Extra|Header): /.test(l));
+      lines.push(...text, '(I missed this ' + it.fails + ' time' + (it.fails === 1 ? '' : 's') + ')', '');
+    }
+    return lines.join('\n');
+  }
+  route('/hard/:did', (app, didStr) => {
+    const did = Number(didStr);
+    const deck = C.decks.get(did);
+    if (!deck) { go('/', true); return; }
+    app.appendChild(topbar('Hardest cards', iconBtn('back', 'Back', () => go('/deck/' + did))));
+    const view = h('main', { class: 'view' });
+    app.appendChild(view);
+    const items = hardCards(deck);
+    if (!items.length) {
+      view.appendChild(h('div', { class: 'panel empty' }, h('h2', null, 'No problem cards yet'), h('p', null, 'Cards show up here after you forget them a few times. That usually means the card is badly worded or asks too much at once, and Claude can rewrite it.')));
+      return;
+    }
+    const selected = new Set(items.slice(0, 15).map((it) => it.c.id));
+    const info = h('p', { class: 'help', style: { marginTop: 0 } });
+    const list = h('div', { class: 'browse-list' });
+    const draw = () => {
+      list.innerHTML = '';
+      info.textContent = items.length + ' card' + (items.length === 1 ? '' : 's') + ' you keep forgetting. ' + selected.size + ' selected.';
+      for (const it of items) {
+        const on = selected.has(it.c.id);
+        const row = h('div', { class: 'b-row' + (on ? ' sel' : '') }, h('input', { type: 'checkbox', checked: on, tabindex: -1 }),
+          h('div', { class: 'main' }, h('div', { class: 't' }, Col.sortFieldText(it.note) || '(image card)'),
+            h('div', { class: 's' }, [(C.decks.get(it.c.did) || {}).name, 'missed ' + it.fails + 'x', it.c.mem ? 'difficulty ' + Math.round((it.d - 1) / 9 * 100) + '%' : null, it.leech ? 'leech' : null].filter(Boolean).join(' \u00b7 '))));
+        row.addEventListener('click', () => { if (on) selected.delete(it.c.id); else selected.add(it.c.id); draw(); });
+        list.appendChild(row);
+      }
+    };
+    const chosen = () => items.filter((it) => selected.has(it.c.id));
+    view.append(
+      h('div', { class: 'panel' },
+        h('div', { class: 'step-h' }, h('span', { class: 'step-n' }, '1'), 'Copy a fix-it prompt'),
+        info,
+        h('button', { class: 'btn primary', type: 'button', onclick: async () => {
+          if (!selected.size) { toast('Select at least one card'); return; }
+          const ok = await root.UI.copyText(fixPrompt(chosen()));
+          toast(ok ? 'Copied. Paste it into Claude.' : 'Could not copy', ok ? { label: 'Open Claude', fn: () => window.open('https://claude.ai/new', '_blank') } : null);
+        } }, icon('copy'), 'Copy prompt for Claude'),
+        h('div', { class: 'step-h', style: { marginTop: '14px' } }, h('span', { class: 'step-n' }, '2'), 'Paste Claude\'s new cards'),
+        h('p', { class: 'help', style: { marginTop: 0 } }, 'Copy Claude\'s code block, then use Import. After that, suspend the old versions here so you only study the new ones.'),
+        h('div', { class: 'row' },
+          h('button', { class: 'btn', type: 'button', onclick: () => go('/import') }, icon('import'), 'Go to Import'),
+          h('button', { class: 'btn', type: 'button', onclick: async () => {
+            if (!selected.size) { toast('Select at least one card'); return; }
+            if (!await confirmDialog('Suspend the ' + selected.size + ' selected old card(s)? They stop showing up but are not deleted.', 'Suspend')) return;
+            Col.suspendCards(Array.from(selected));
+            toast('Suspended', { label: 'Undo', fn: () => { DB.undo(); root.UI.render(); } });
+            root.UI.render();
+          } }, icon('suspend'), 'Suspend old versions'))),
+      list);
+    draw();
+  });
 
   // ---------- ask Claude ----------
   function cardForClaude(card) {
@@ -5376,7 +5469,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude };
+  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 /* ---- ui_edit.js ---- */
@@ -5803,11 +5896,24 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
         while (fields.length < nt.fields.length) fields.push('');
         const deckName = n.deck || opts.defaultDeck || 'Default';
         const deck = Col.ensureDeck(deckName);
-        if (opts.skipDup !== false) {
-          if (!dupIdx.has(nt.id)) dupIdx.set(nt.id, Col.duplicateIndex(nt.id));
+        const mode = opts.dupMode || (opts.skipDup === false ? 'add' : 'skip');
+        if (mode !== 'add') {
+          if (!dupIdx.has(nt.id)) dupIdx.set(nt.id, Col.duplicateMap(nt.id));
           const key = T.htmlToTextLine(n.fmt === 'html' ? fields[0] : T.mdToHtml(fields[0])).toLowerCase();
-          if (dupIdx.get(nt.id).has(key)) { res.skipped++; continue; }
-          dupIdx.get(nt.id).add(key);
+          const existing = dupIdx.get(nt.id).get(key);
+          if (existing != null) {
+            const cur = C.notes.get(existing);
+            if (mode === 'update' && cur && existing > 0) {
+              const same = cur.fields.length === fields.length && cur.fields.every((f, k) => f === fields[k]) && (cur.fmt || 'md') === (n.fmt || 'md');
+              if (same) res.skipped++;
+              else {
+                DB.update('notes', existing, (x) => { x.fields = fields.slice(); x.fmt = n.fmt || 'md'; x.mod = Date.now(); x.tags = Col.normTags(x.tags.concat(n.tags || [], opts.extraTags || [])); });
+                res.updated = (res.updated || 0) + 1;
+              }
+            } else res.skipped++;
+            continue;
+          }
+          dupIdx.get(nt.id).set(key, -1);
         }
         const tags = (n.tags || []).concat(opts.extraTags || []);
         const r = Col.addNoteInner(nt.id, fields, tags, deck.id, n.fmt || 'md');
@@ -5919,7 +6025,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     setDefLabel();
     defDeckBtn.addEventListener('click', async () => { const d = await deckPicker('Deck for cards without a #deck line', defDeckId); if (d) { defDeckId = d; setDefLabel(); reparse(); } });
     const tagsIn = h('input', { type: 'text', placeholder: 'optional extra tags', autocapitalize: 'off' });
-    const skipDup = h('input', { type: 'checkbox', checked: true });
+    const dupSel = h('select', null, h('option', { value: 'skip' }, 'Skip it'), h('option', { value: 'update' }, 'Update it (keeps your progress)'), h('option', { value: 'add' }, 'Add it again'));
     const importBtn = h('button', { class: 'btn primary block', type: 'button', disabled: true }, icon('import'), 'Import');
     function reparse() {
       root.__pasteDraft = ta.value;
@@ -5943,7 +6049,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       if (!parsed.notes.length) return;
       const defDeck = (C.decks.get(defDeckId) || { name: 'Default' }).name;
       let res;
-      try { res = importParsed(parsed.notes, { defaultDeck: defDeck, extraTags: tagsIn.value.split(/[\s,]+/).filter(Boolean), skipDup: skipDup.checked }); }
+      try { res = importParsed(parsed.notes, { defaultDeck: defDeck, extraTags: tagsIn.value.split(/[\s,]+/).filter(Boolean), dupMode: dupSel.value }); }
       catch (e) { toast('Import failed: ' + e.message); return; }
       showImportResult(res);
       if (res.added) { ta.value = ''; root.__pasteDraft = ''; reparse(); }
@@ -5955,7 +6061,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       previewBox,
       h('label', { class: 'field' }, h('span', null, 'Deck for cards without a #deck line'), defDeckBtn),
       h('label', { class: 'field' }, h('span', null, 'Extra tags'), tagsIn),
-      h('label', { class: 'check' }, skipDup, h('span', null, 'Skip cards whose front already exists')),
+      h('label', { class: 'field' }, h('span', null, 'If a card with the same front already exists'), dupSel),
       importBtn));
     reparse();
 
@@ -5991,6 +6097,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
 
   function showImportResult(res) {
     const parts = ['Imported ' + res.added + ' note' + (res.added === 1 ? '' : 's') + ' (' + res.cards + ' card' + (res.cards === 1 ? '' : 's') + ')'];
+    if (res.updated) parts.push(res.updated + ' existing card' + (res.updated === 1 ? '' : 's') + ' updated');
     if (res.skipped) parts.push(res.skipped + ' duplicate' + (res.skipped === 1 ? '' : 's') + ' skipped');
     if (res.failed.length) parts.push(res.failed.length + ' failed');
     const firstDeck = res.decks.size ? Array.from(res.decks.keys())[0] : null;
@@ -6001,7 +6108,7 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       h('div', { class: 'sheet-actions' },
         h('button', { class: 'btn', onclick: () => s.close() }, 'Import more'),
         firstDeck ? h('button', { class: 'btn primary', onclick: () => { s.close(); go('/deck/' + firstDeck); } }, 'Study') : null));
-    const s = sheet(body, { title: res.added ? 'Done' : 'Nothing imported' });
+    const s = sheet(body, { title: res.added || res.updated ? 'Done' : 'Nothing imported' });
   }
 
   async function importFile(f) {
