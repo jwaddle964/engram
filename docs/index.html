@@ -1534,7 +1534,7 @@ aliases:["yml"],contains:l}}});const Ke=te;for(const e of Object.keys(Pe)){
 const n=e.replace("grmr_","").replace("_","-");Ke.registerLanguage(n,Pe[e])}
 return Ke}()
 ;"object"==typeof exports&&"undefined"!=typeof module&&(module.exports=hljs);</script>
-<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (a67526db4a)';
+<script>window.APP_NAME='Engram';window.APP_VERSION='1.0.0 (de4b5b0dda)';
 
 /* ---- fsrs.js ---- */
 /*
@@ -6226,12 +6226,37 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
     setDefLabel();
     defDeckBtn.addEventListener('click', async () => { const d = await deckPicker('Deck for cards without a #deck line', defDeckId); if (d) { defDeckId = d; setDefLabel(); reparse(); } });
     const tagsIn = h('input', { type: 'text', placeholder: 'optional extra tags', autocapitalize: 'off' });
-    const dupSel = h('select', null, h('option', { value: 'skip' }, 'Skip it'), h('option', { value: 'update' }, 'Update it (keeps your progress)'), h('option', { value: 'add' }, 'Add it again'));
+    const dupSel = h('select', null, h('option', { value: 'update' }, 'Replace with the new version (keeps progress)'), h('option', { value: 'skip' }, 'Skip them (keep my current version)'), h('option', { value: 'add' }, 'Add them again as extra cards'));
     const importBtn = h('button', { class: 'btn primary block', type: 'button', disabled: true }, icon('import'), 'Import');
+    const dupInfo = h('p', { style: { margin: '0 0 6px', fontWeight: '600' } });
+    const dupBox = h('div', { class: 'banner hidden', style: { display: 'block' } }, dupInfo, h('label', { class: 'field', style: { margin: 0 } }, h('span', null, 'What should happen to them?'), dupSel));
+    let userPickedDup = false;
+    dupSel.addEventListener('change', () => { userPickedDup = true; });
+    function countExisting(notes) {
+      const maps = new Map();
+      let existing = 0, changed = 0;
+      for (const n of notes) {
+        const nt = Col.notetypeByName(n.notetype) || (n.notetype === 'Cloze' ? Col.stockNotetype('cloze') : Col.stockNotetype('basic'));
+        if (!maps.has(nt.id)) maps.set(nt.id, Col.duplicateMap(nt.id));
+        const key = T.htmlToTextLine(n.fmt === 'html' ? n.fields[0] : T.mdToHtml(n.fields[0])).toLowerCase();
+        const id = maps.get(nt.id).get(key);
+        if (id == null) continue;
+        existing++;
+        const cur = C.notes.get(id);
+        if (cur && n.fields.slice(0, cur.fields.length).some((f, k) => (f || '') !== (cur.fields[k] || ''))) changed++;
+      }
+      return { existing, changed };
+    }
     function reparse() {
       root.__pasteDraft = ta.value;
       parsed = I.parse(ta.value, {});
       renderParsedPreview(previewBox, parsed);
+      const ex = parsed.notes.length ? countExisting(parsed.notes) : { existing: 0, changed: 0 };
+      dupBox.classList.toggle('hidden', !ex.existing);
+      if (ex.existing) {
+        dupInfo.textContent = ex.existing + ' of these ' + (ex.existing === 1 ? 'is' : 'are') + ' already in your decks' + (ex.changed ? ' (' + ex.changed + ' with a new version here).' : ' (no changes).');
+        if (!userPickedDup) dupSel.value = ex.changed ? 'update' : 'skip';
+      }
       importBtn.disabled = !parsed.notes.length;
       importBtn.lastChild.textContent = parsed.notes.length ? 'Import ' + parsed.notes.length + ' card' + (parsed.notes.length === 1 ? '' : 's') : 'Import';
     }
@@ -6259,11 +6284,12 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       h('div', { class: 'step-h' }, h('span', { class: 'step-n' }, '2'), 'Paste the reply'),
       ta,
       h('div', { class: 'row', style: { marginTop: '8px' } }, pasteBtn, clearBtn),
+      dupBox,
+      importBtn,
       previewBox,
-      h('label', { class: 'field' }, h('span', null, 'Deck for cards without a #deck line'), defDeckBtn),
-      h('label', { class: 'field' }, h('span', null, 'Extra tags'), tagsIn),
-      h('label', { class: 'field' }, h('span', null, 'If a card with the same front already exists'), dupSel),
-      importBtn));
+      h('details', { class: 'more' }, h('summary', null, 'More options'),
+        h('label', { class: 'field' }, h('span', null, 'Deck for cards without a #deck line'), defDeckBtn),
+        h('label', { class: 'field' }, h('span', null, 'Extra tags'), tagsIn))));
     reparse();
 
     // ---- files

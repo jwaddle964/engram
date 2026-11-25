@@ -1,5 +1,5 @@
 /* Offline support: cache the app shell, serve it cache-first, update in the background. */
-const VERSION = 'a67526db4a';
+const VERSION = 'de4b5b0dda';
 const CACHE = 'engram-' + VERSION;
 const CORE = ['./', './index.html', './manifest.webmanifest', './icon-180.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png'];
 const OPTIONAL = ['./vendor/jszip.min.js', './vendor/sql-wasm.js', './vendor/sql-wasm.wasm', './vendor/fzstd.js'];
