@@ -59,7 +59,11 @@ def build():
         f.write(read(os.path.join(SRC, 'sw.js')).replace('__VERSION__', body_hash))
     shutil.copy(os.path.join(SRC, 'manifest.webmanifest'), DIST)
     for n in os.listdir(os.path.join(ROOT, 'assets')):
-        shutil.copy(os.path.join(ROOT, 'assets', n), DIST)
+        src = os.path.join(ROOT, 'assets', n)
+        if os.path.isdir(src):
+            shutil.copytree(src, os.path.join(DIST, n))
+        else:
+            shutil.copy(src, DIST)
     shutil.copy(os.path.join(VEND, 'jszip-3.10.1', 'dist', 'jszip.min.js'), os.path.join(DIST, 'vendor'))
     shutil.copy(os.path.join(VEND, 'sql.js-1.10.3', 'dist', 'sql-wasm.js'), os.path.join(DIST, 'vendor'))
     shutil.copy(os.path.join(VEND, 'sql.js-1.10.3', 'dist', 'sql-wasm.wasm'), os.path.join(DIST, 'vendor'))

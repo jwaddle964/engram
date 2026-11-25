@@ -332,7 +332,11 @@ input[data-typeans] { width: 100%; max-width: 520px; font-size: 18px; padding: 1
       const src = img.getAttribute('src');
       if (!isExternal(src)) {
         img.removeAttribute('src');
-        mediaUrl(src).then((u) => { if (u) img.src = u; else img.alt = '[missing image: ' + src + ']'; });
+        mediaUrl(src).then((u) => {
+          if (u) img.src = u;
+          else if (/^[\w.-]+(\/[\w.-]+)+$/.test(src)) img.src = src; // an image shipped with the app, e.g. img/amc/sector.svg
+          else img.alt = '[missing image: ' + src + ']';
+        });
       }
     }
     const sounds = Array.from(cardDiv.querySelectorAll('[data-sound]'));

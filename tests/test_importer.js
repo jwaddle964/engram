@@ -145,3 +145,14 @@ console.log(n + ' importer tests passed');
   assert.strictEqual(r2.notes[1].fields[1], '2');
   console.log('wrapper fence tests passed');
 }
+// bold at the start of a card's text is kept; bolded labels are still recognized
+{
+  const r = I.parse('Q: **Bold** question\nA: **Answer: 5**\n\n**Q:** plain\n**A:** also plain\n\n**Q**: x\n**A**: y');
+  assert.strictEqual(r.notes.length, 3);
+  assert.strictEqual(r.notes[0].fields[0], '**Bold** question');
+  assert.strictEqual(r.notes[0].fields[1], '**Answer: 5**');
+  assert.strictEqual(r.notes[1].fields[0], 'plain');
+  assert.strictEqual(r.notes[1].fields[1], 'also plain');
+  assert.strictEqual(r.notes[2].fields[0], 'x');
+  console.log('bold marker tests passed');
+}

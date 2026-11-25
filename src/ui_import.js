@@ -202,6 +202,10 @@
       h('p', { class: 'help', style: { marginTop: 0 } }, 'Text (.txt, .csv, .tsv), JSON, Anki packages (.apkg / .colpkg) including shared decks from AnkiWeb, or a ' + APP + ' backup.'),
       h('button', { class: 'btn', type: 'button', onclick: () => fileIn.click() }, icon('file'), 'Choose file'), fileIn));
 
+    view.appendChild(h('div', { class: 'panel' },
+      h('h2', null, 'Deck library'),
+      h('p', { class: 'help', style: { marginTop: 0 } }, 'Ready-made decks you can add with one tap, like contest math problems with walkthroughs.'),
+      h('button', { class: 'btn', type: 'button', onclick: () => go('/library') }, icon('book'), 'Open deck library')));
     view.appendChild(h('details', { class: 'panel more' }, h('summary', null, 'Card text format reference'),
       h('div', { class: 'prompt-box', style: { maxHeight: 'none' } }, [
         '#deck: Spanish::Verbs        deck for the cards below (:: = subdeck)',
@@ -325,6 +329,32 @@
     downloadBlob(new Blob([lines.join('\n') + '\n'], { type: 'text/plain' }), name);
     toast('Exported ' + nids.size + ' notes');
   }
+
+  route('/library', (app) => {
+    app.appendChild(topbar('Deck library', iconBtn('back', 'Back', () => back('/import'))));
+    const view = h('main', { class: 'view' });
+    app.appendChild(view);
+    const status = h('p', { class: 'help' }, 'Loading...');
+    view.appendChild(status);
+    fetch('library/index.json', { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); }).then((list) => {
+      status.remove();
+      for (const item of list) {
+        const btn = h('button', { class: 'btn primary', type: 'button' }, icon('import'), 'Add ' + item.cards + ' cards');
+        btn.addEventListener('click', async () => {
+          btn.disabled = true;
+          try {
+            const r = await fetch('library/' + item.file, { cache: 'no-cache' });
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            const parsed = I.parse(await r.text(), {});
+            showImportResult(importParsed(parsed.notes, { dupMode: 'update' }));
+          } catch (e) { toast('Could not load the deck (are you online?)'); }
+          btn.disabled = false;
+        });
+        view.appendChild(h('div', { class: 'panel' }, h('h2', null, item.title), h('p', { class: 'help', style: { marginTop: 0 } }, item.desc), btn));
+      }
+      view.appendChild(h('p', { class: 'help' }, 'Adding a deck again updates its cards without losing your progress.'));
+    }).catch(() => { status.textContent = 'Could not load the library. Connect to the internet and try again.'; });
+  });
 
   root.Backup = { exportBackup, restoreBackup, exportDeckText, importParsed, importFile, b64ToBlob };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

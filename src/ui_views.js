@@ -32,6 +32,7 @@
           h('div', { class: 'goal-text' }, goal.remaining ? h('b', null, goal.done + ' of ' + total) : h('b', null, goal.learning ? 'Almost done' : 'All done today'),
             h('span', null, goal.remaining ? 'cards done today' : goal.learning ? goal.learning + ' learning card' + (goal.learning === 1 ? '' : 's') + ' left' : (goal.done ? goal.done + ' cards studied' : 'nothing due')))),
         h('div', { class: 'goal-bar', role: 'progressbar', 'aria-valuenow': String(pct), 'aria-valuemin': '0', 'aria-valuemax': '100' }, h('i', { style: { width: pct + '%' } })),
+        h('div', { class: 'row', style: { justifyContent: 'center', marginTop: '6px' } }, h('button', { class: 'btn', type: 'button', style: { minHeight: '34px', padding: '4px 12px', fontSize: '14px' }, onclick: () => go('/report') }, icon('chart'), 'Weekly report')),
         h('div', { class: 'today-line', style: { margin: '8px 0 0' } }, !sk.studiedToday && sk.days ? 'Study today to keep your streak.' : st.count ? 'Studied ' + st.count + ' card' + (st.count === 1 ? '' : 's') + ' in ' + fmtDuration(st.ms) + ' today.' : 'No cards studied yet today.')));
     } else view.appendChild(h('div', { class: 'today-line' }, 'No cards studied yet today.'));
     if (root.__storageWarning) view.appendChild(h('div', { class: 'banner' }, icon('info'), h('div', { class: 'grow' }, root.__storageWarning)));
@@ -217,6 +218,69 @@
     for (const l of lines) panel.appendChild(h('p', { class: 'help' }, l));
     return panel;
   }
+
+  // ---------- weekly report ----------
+  function weekStats(fromDay, toDay) {
+    const st = { answers: 0, correct: 0, ms: 0, days: new Set(), newLearned: 0, byDeck: new Map(), byTag: new Map() };
+    const firstSeen = new Map();
+    for (const r of C.revlog.values()) {
+      if (r.ease === 0 || r.type === 4) continue;
+      const d = Col.dayNumber(r.id);
+      const f = firstSeen.get(r.cid);
+      if (f == null || d < f) firstSeen.set(r.cid, d);
+      if (d < fromDay || d > toDay) continue;
+      const card = C.cards.get(r.cid);
+      st.answers++; if (r.ease > 1) st.correct++; st.ms += r.time; st.days.add(d);
+      if (!card) continue;
+      const deck = C.decks.get(card.did);
+      const note = C.notes.get(card.nid);
+      const bump = (map, key) => { const v = map.get(key) || { n: 0, ok: 0 }; v.n++; if (r.ease > 1) v.ok++; map.set(key, v); };
+      if (deck) bump(st.byDeck, deck.name);
+      if (note) for (const t of note.tags) if (t.toLowerCase() !== 'leech') bump(st.byTag, t);
+    }
+    for (const d of firstSeen.values()) if (d >= fromDay && d <= toDay) st.newLearned++;
+    return st;
+  }
+  route('/report', (app) => {
+    app.appendChild(topbar('Weekly report', iconBtn('back', 'Back', () => back('/'))));
+    const view = h('main', { class: 'view' });
+    app.appendChild(view);
+    const today = Col.timing().today;
+    const cur = weekStats(today - 6, today), prev = weekStats(today - 13, today - 7);
+    const pct = (s) => (s.answers ? Math.round(s.correct / s.answers * 100) : null);
+    const delta = (a, b, unit) => {
+      if (b == null || a == null) return '';
+      const d = a - b;
+      return d === 0 ? ' (same as last week)' : ' (' + (d > 0 ? '+' : '') + d + (unit || '') + ' vs last week)';
+    };
+    const label = (d) => new Date(d * 86400000).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' });
+    view.appendChild(h('p', { class: 'help', style: { textAlign: 'center' } }, label(today - 6) + ' to ' + label(today)));
+    if (!cur.answers) {
+      view.appendChild(h('div', { class: 'panel empty' }, h('h2', null, 'No reviews this week yet'), h('p', null, 'Study a little every day and this page will show how you are doing.')));
+      return;
+    }
+    view.appendChild(h('div', { class: 'panel' }, h('div', { class: 'stat-grid' },
+      h('div', { class: 'stat' }, h('b', null, cur.days.size + '/7'), h('span', null, 'days studied' + delta(cur.days.size, prev.answers ? prev.days.size : null))),
+      h('div', { class: 'stat' }, h('b', null, pct(cur) + '%'), h('span', null, 'answered correctly' + delta(pct(cur), pct(prev), '%'))),
+      h('div', { class: 'stat' }, h('b', null, String(cur.answers)), h('span', null, 'answers' + delta(cur.answers, prev.answers || null))),
+      h('div', { class: 'stat' }, h('b', null, fmtDuration(cur.ms)), h('span', null, 'time studying')),
+      h('div', { class: 'stat' }, h('b', null, String(cur.newLearned)), h('span', null, 'new cards started')),
+      h('div', { class: 'stat' }, h('b', null, String(Col.streak().days)), h('span', null, 'day streak')))));
+    const rows = (map) => Array.from(map.entries()).filter(([, v]) => v.n >= 3).map(([k, v]) => ({ k, n: v.n, p: Math.round(v.ok / v.n * 100) })).sort((a, b) => a.p - b.p);
+    const decks = rows(cur.byDeck), tags = rows(cur.byTag);
+    const weakest = decks[0];
+    if (weakest && weakest.p < 85) {
+      const d = Col.deckByName(weakest.k);
+      view.appendChild(h('div', { class: 'banner' }, icon('target'), h('div', { class: 'grow' }, 'Weakest this week: ' + weakest.k.split('::').slice(-2).join(' > ') + ' (' + weakest.p + '% correct). Rewriting its hardest cards usually helps more than repeating them.'),
+        d ? h('button', { class: 'btn', onclick: () => go('/hard/' + d.id) }, 'Fix') : null));
+    }
+    const table = (title, list, note) => h('div', { class: 'panel' }, h('h2', null, title), note ? h('p', { class: 'help', style: { marginTop: 0 } }, note) : null,
+      h('table', { class: 'simple' }, h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'Answers'), h('th', null, 'Correct'))),
+        h('tbody', null, list.map((r) => h('tr', null, h('td', null, r.k.split('::').slice(-2).join(' > ')), h('td', null, String(r.n)), h('td', { style: { color: r.p < 70 ? 'var(--again)' : r.p >= 90 ? 'var(--review)' : null, fontWeight: 600 } }, r.p + '%'))))));
+    if (decks.length) view.appendChild(table('By deck', decks, 'Worst first. Below 70% means the cards are too hard or too new; above 90% is great.'));
+    if (tags.length > 1) view.appendChild(table('By topic (tags)', tags));
+    view.appendChild(h('p', { class: 'help' }, '"Correct" counts every answer that was not Again, including the first tries on brand-new cards, so it starts lower and climbs as cards mature.'));
+  });
 
   // ---------- hardest cards ----------
   function hardCards(deck) {
@@ -668,5 +732,5 @@
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt };
+  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt, weekStats };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

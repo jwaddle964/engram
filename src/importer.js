@@ -40,7 +40,18 @@
 
   // ---------- format 1: card text ----------
   const HEADER = /^\s*#\s*(deck|tags|tag|type|notetype|note type)\s*:\s*(.*?)\s*$/i;
-  const MARKER = /^\s*(?:\d{1,4}[.)]\s+)?(?:\*\*|__)?(Q|A|C|E|Front|Back|Extra|Tags)\d{0,3}\s*(?:\*\*|__)?\s*:\s*(?:\*\*|__)?(.*)$/i;
+  // "Q:" or a bolded "**Q:**" / "**Q**:". Bold is only stripped when the label itself starts bold,
+  // so "Q: **Bold question**" keeps its formatting.
+  const MARKER_RE = /^\s*(?:\d{1,4}[.)]\s+)?(\*\*|__)?(Q|A|C|E|Front|Back|Extra|Tags)\d{0,3}\s*(?:\*\*|__)?\s*:\s*(.*)$/i;
+  const MARKER = {
+    exec(line) {
+      const m = MARKER_RE.exec(line);
+      if (!m) return null;
+      let rest = m[3];
+      if (m[1] && rest.startsWith(m[1])) rest = rest.slice(m[1].length);
+      return [m[0], m[2], rest];
+    },
+  };
 
   function countMarkers(text) {
     let q = 0, c = 0;

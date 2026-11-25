@@ -1,0 +1,369 @@
+#deck: Math Contests::AMC 10
+#type: basic
+#tags: amc10 algebra
+
+Q: **AMC 10 style.** The sum of three consecutive odd integers is $99$. What is the largest of the three?
+
+(A) 31  (B) 33  (C) 35  (D) 37  (E) 39
+A: **Answer: (C) 35**
+
+1. Call them $n-2,\ n,\ n+2$. Their sum is $3n = 99$, so $n = 33$.
+2. The largest is $n + 2 = 35$.
+
+**Key idea:** center a run of consecutive numbers on the middle one so the offsets cancel.
+
+Q: **AMC 10 style.** A price is raised by $20\%$, then the new price is lowered by $20\%$. What is the overall change?
+
+(A) no change  (B) $4\%$ decrease  (C) $4\%$ increase  (D) $2\%$ decrease  (E) $20\%$ decrease
+A: **Answer: (B) 4% decrease**
+
+1. Raising by $20\%$ multiplies by $1.2$; lowering by $20\%$ multiplies by $0.8$.
+2. $1.2 \times 0.8 = 0.96$, which is $4\%$ less than the start.
+
+**Key idea:** percent changes multiply, they do not add.
+
+Q: **AMC 10 style.** If $x + \frac{1}{x} = 5$, what is $x^2 + \frac{1}{x^2}$?
+
+(A) 21  (B) 23  (C) 25  (D) 27  (E) 29
+A: **Answer: (B) 23**
+
+1. Square both sides: $x^2 + 2 + \frac{1}{x^2} = 25$.
+2. Subtract 2: $x^2 + \frac{1}{x^2} = 23$.
+
+**Key idea:** squaring $x + \frac1x$ always produces a middle term of exactly $2$.
+
+Q: **AMC 10 style.** Two numbers have sum $20$ and product $91$. What is the sum of their squares?
+
+(A) 182  (B) 200  (C) 218  (D) 236  (E) 400
+A: **Answer: (C) 218**
+
+1. $a^2 + b^2 = (a+b)^2 - 2ab$.
+2. $= 400 - 182 = 218$.
+
+**Key idea:** you never need the numbers themselves (here 7 and 13); use symmetric-sum identities.
+
+Q: **AMC 10 style.** A car drives $60$ mph for $2$ hours, then $40$ mph for $3$ hours. What is its average speed for the whole trip?
+
+(A) 46  (B) 48  (C) 50  (D) 52  (E) 54
+A: **Answer: (B) 48 mph**
+
+1. Distance: $60 \cdot 2 + 40 \cdot 3 = 120 + 120 = 240$ miles.
+2. Time: $5$ hours. Average speed $= 240 / 5 = 48$.
+
+**Key idea:** average speed = total distance / total time, never the average of the speeds (that would give 50, a trap answer).
+
+#tags: amc10 counting
+Q: **AMC 10 style.** In how many ways can $5$ people sit in a row if Alice and Bob must sit next to each other?
+
+(A) 24  (B) 48  (C) 60  (D) 96  (E) 120
+A: **Answer: (B) 48**
+
+1. Glue Alice and Bob into one block: now arrange $4$ items, $4! = 24$ ways.
+2. Inside the block they can be AB or BA: $\times 2$.
+3. $24 \cdot 2 = 48$.
+
+**Key idea:** "must be together" means treat them as one block, then multiply by the arrangements inside the block.
+
+Q: **AMC 10 style.** How many three-digit positive integers have digits that sum to $5$?
+
+(A) 10  (B) 12  (C) 15  (D) 18  (E) 21
+A: **Answer: (C) 15**
+
+1. Digits $a + b + c = 5$ with $a \ge 1$. Let $a' = a - 1$, so $a' + b + c = 4$ with all $\ge 0$.
+2. Stars and bars: $\binom{4+2}{2} = \binom{6}{2} = 15$. (No digit can exceed 9, so nothing to subtract.)
+
+**Key idea:** shift a variable to remove a "$\ge 1$" condition, then use stars and bars $\binom{n+k-1}{k-1}$.
+
+Q: **AMC 10 style.** A committee of $3$ is chosen from $8$ people. How many committees include at least one of the $3$ seniors in the group?
+
+(A) 36  (B) 40  (C) 46  (D) 50  (E) 56
+A: **Answer: (C) 46**
+
+1. All committees: $\binom{8}{3} = 56$.
+2. Committees with no seniors (all from the other 5): $\binom{5}{3} = 10$.
+3. $56 - 10 = 46$.
+
+**Key idea:** for "at least one", count the complement (none) and subtract.
+
+Q: **AMC 10 style.** How many positive integers $\le 100$ are perfect squares or perfect cubes?
+
+(A) 10  (B) 12  (C) 13  (D) 14  (E) 16
+A: **Answer: (B) 12**
+
+1. Squares: $1^2, \dots, 10^2$, that is 10. Cubes: $1, 8, 27, 64$, that is 4.
+2. Both (sixth powers): $1$ and $64$, that is 2.
+3. Inclusion-exclusion: $10 + 4 - 2 = 12$.
+
+**Key idea:** "or" means add, then subtract the overlap once.
+
+#tags: amc10 probability
+Q: **AMC 10 style.** Two fair dice are rolled. What is the probability their sum is $7$?
+
+(A) $\frac{1}{12}$  (B) $\frac{1}{9}$  (C) $\frac{1}{6}$  (D) $\frac{5}{36}$  (E) $\frac{7}{36}$
+A: **Answer: (C) $\frac16$**
+
+1. Pairs summing to 7: $(1,6),(2,5),(3,4),(4,3),(5,2),(6,1)$, that is 6 of 36.
+2. $\frac{6}{36} = \frac16$.
+
+**Key idea:** 7 is the most likely sum: whatever the first die shows, exactly one value of the second works.
+
+Q: **AMC 10 style.** A bag has $4$ red and $6$ blue marbles. Two are drawn without replacement. What is the probability both are red?
+
+(A) $\frac{2}{15}$  (B) $\frac{4}{25}$  (C) $\frac{1}{5}$  (D) $\frac{2}{9}$  (E) $\frac{4}{15}$
+A: **Answer: (A) $\frac{2}{15}$**
+
+1. First red: $\frac{4}{10}$. Second red given the first was red: $\frac{3}{9}$.
+2. $\frac{4}{10} \cdot \frac{3}{9} = \frac{12}{90} = \frac{2}{15}$.
+
+**Key idea:** without replacement, both the top and bottom of the fraction drop by 1. (With replacement you would get $\frac{4}{25}$, a trap answer.)
+
+#tags: amc10 numbertheory
+Q: **AMC 10 style.** What is the remainder when $7^{100}$ is divided by $5$?
+
+(A) 0  (B) 1  (C) 2  (D) 3  (E) 4
+A: **Answer: (B) 1**
+
+1. $7 \equiv 2 \pmod 5$, so look at powers of 2: $2, 4, 3, 1, \dots$ The cycle length is 4.
+2. $100$ is a multiple of 4, so $2^{100} \equiv 1 \pmod 5$.
+
+**Key idea:** reduce the base first, then find the cycle of powers.
+
+Q: **AMC 10 style.** How many positive divisors does $360$ have?
+
+(A) 18  (B) 20  (C) 24  (D) 30  (E) 36
+A: **Answer: (C) 24**
+
+1. $360 = 2^3 \cdot 3^2 \cdot 5^1$.
+2. Number of divisors $= (3+1)(2+1)(1+1) = 24$.
+
+**Key idea:** add 1 to each exponent in the prime factorization and multiply.
+
+Q: **AMC 10 style.** What is the units digit of $3^{2026}$?
+
+(A) 1  (B) 3  (C) 5  (D) 7  (E) 9
+A: **Answer: (E) 9**
+
+1. Units digits of powers of 3 cycle: $3, 9, 7, 1$ (length 4).
+2. $2026 = 4 \cdot 506 + 2$, so use the 2nd entry: $9$.
+
+**Key idea:** units digits cycle; reduce the exponent mod the cycle length.
+
+Q: **AMC 10 style.** What is the sum of all positive integers less than $100$ that are multiples of $3$ or $5$?
+
+(A) 2018  (B) 2208  (C) 2318  (D) 2418  (E) 2633
+A: **Answer: (C) 2318**
+
+1. Multiples of 3: $3 + 6 + \dots + 99 = 3 \cdot \frac{33 \cdot 34}{2} = 1683$.
+2. Multiples of 5: $5 + \dots + 95 = 5 \cdot \frac{19 \cdot 20}{2} = 950$.
+3. Counted twice, multiples of 15: $15 + \dots + 90 = 15 \cdot \frac{6 \cdot 7}{2} = 315$.
+4. $1683 + 950 - 315 = 2318$.
+
+**Key idea:** inclusion-exclusion on sums, with $1 + 2 + \dots + n = \frac{n(n+1)}{2}$.
+
+Q: **AMC 10 style.** What is the smallest integer greater than $1$ that leaves a remainder of $1$ when divided by each of $2, 3, 4, 5,$ and $6$?
+
+(A) 31  (B) 59  (C) 61  (D) 121  (E) 601
+A: **Answer: (C) 61**
+
+1. $n - 1$ must be divisible by $2, 3, 4, 5, 6$, so by their LCM, which is $60$.
+2. The smallest such $n > 1$ is $60 + 1 = 61$.
+
+**Key idea:** "same remainder $r$ for every divisor" means $n - r$ is a multiple of the LCM.
+
+Q: **AMC 10 style.** How many zeros are at the end of $50!$?
+
+(A) 10  (B) 11  (C) 12  (D) 13  (E) 15
+A: **Answer: (C) 12**
+
+1. Each trailing zero needs a factor $10 = 2 \cdot 5$; fives are the scarce factor.
+2. Multiples of 5 up to 50: $10$. Multiples of 25 give one extra five each: $2$.
+3. $10 + 2 = 12$.
+
+**Key idea:** count fives with $\lfloor \frac{n}{5} \rfloor + \lfloor \frac{n}{25} \rfloor + \dots$
+
+Q: **AMC 10 style.** What is the sum of the digits of $10^{25} - 25$?
+
+(A) 210  (B) 215  (C) 219  (D) 223  (E) 225
+A: **Answer: (C) 219**
+
+1. Try small cases: $10^3 - 25 = 975$, $10^4 - 25 = 9975$. The pattern is $(n-2)$ nines followed by $75$.
+2. For $10^{25}$: $23$ nines then $75$. Sum $= 23 \cdot 9 + 7 + 5 = 207 + 12 = 219$.
+
+**Key idea:** when a number is too big, compute small versions and find the pattern.
+
+#tags: amc10 geometry
+Q: **AMC 10 style.** A right triangle has legs $6$ and $8$. What is the length $h$ of the altitude from the right angle to the hypotenuse?
+
+![right triangle with altitude](img/amc/right-triangle-altitude.svg)
+
+(A) 4  (B) 4.5  (C) 4.8  (D) 5  (E) 5.2
+A: **Answer: (C) 4.8**
+
+1. Hypotenuse $= \sqrt{6^2 + 8^2} = 10$.
+2. Area two ways: $\frac12 \cdot 6 \cdot 8 = \frac12 \cdot 10 \cdot h$, so $24 = 5h$ and $h = 4.8$.
+
+**Key idea:** compute the area two different ways to find an altitude.
+
+Q: **AMC 10 style.** A square is inscribed in a circle of radius $5$. What is the area of the square?
+
+![square inscribed in a circle](img/amc/square-in-circle.svg)
+
+(A) 25  (B) 50  (C) $25\pi$  (D) 75  (E) 100
+A: **Answer: (B) 50**
+
+1. The square's diagonal is a diameter: $10$.
+2. Area of a square from its diagonal $d$: $\frac{d^2}{2} = \frac{100}{2} = 50$.
+
+**Key idea:** a square's area is $\frac{d^2}{2}$ (it is a rhombus with equal diagonals).
+
+Q: **AMC 10 style.** Rectangle $ABCD$ is $8$ by $6$. $M$ is the midpoint of $\overline{BC}$ and $N$ is the midpoint of $\overline{CD}$. What is the area of triangle $AMN$?
+
+![rectangle with triangle AMN](img/amc/rectangle-triangle.svg)
+
+(A) 12  (B) 16  (C) 18  (D) 20  (E) 24
+A: **Answer: (C) 18**
+
+1. Rectangle area: $48$. Subtract the three right triangles around $AMN$.
+2. $\triangle ABM = \frac12 \cdot 8 \cdot 3 = 12$, $\triangle MCN = \frac12 \cdot 4 \cdot 3 = 6$, $\triangle NDA = \frac12 \cdot 4 \cdot 6 = 12$.
+3. $48 - 12 - 6 - 12 = 18$.
+
+**Key idea:** for a slanted triangle inside a rectangle, subtract the corner triangles.
+
+Q: **AMC 10 style.** A sector has radius $3$ and central angle $120^\circ$. What is its area?
+
+![sector with 120 degree angle](img/amc/sector.svg)
+
+(A) $2\pi$  (B) $3\pi$  (C) $4\pi$  (D) $6\pi$  (E) $9\pi$
+A: **Answer: (B) $3\pi$**
+
+1. $120^\circ$ is $\frac{120}{360} = \frac13$ of the circle.
+2. $\frac13 \cdot \pi \cdot 3^2 = 3\pi$.
+
+**Key idea:** sector area $= \frac{\theta}{360^\circ} \cdot \pi r^2$.
+
+Q: **AMC 10 style.** A triangle has sides $13$, $14$, and $15$. What is its area?
+
+![triangle with sides 13, 14, 15](img/amc/triangle-13-14-15.svg)
+
+(A) 72  (B) 78  (C) 84  (D) 90  (E) 96
+A: **Answer: (C) 84**
+
+1. Drop the altitude from $A$ to $\overline{BC}$. It splits the triangle into right triangles $5$-$12$-$13$ and $9$-$12$-$15$.
+2. Area $= \frac12 \cdot 14 \cdot 12 = 84$. (Heron's check: $s = 21$, $\sqrt{21 \cdot 8 \cdot 7 \cdot 6} = 84$.)
+
+**Key idea:** the 13-14-15 triangle shows up constantly: it is two Pythagorean triangles glued together, with height 12.
+
+Q: **AMC 10 style.** Each interior angle of a regular polygon is $150^\circ$. How many sides does it have?
+
+(A) 10  (B) 11  (C) 12  (D) 14  (E) 15
+A: **Answer: (C) 12**
+
+1. Each exterior angle is $180^\circ - 150^\circ = 30^\circ$.
+2. Exterior angles add to $360^\circ$, so $n = \frac{360}{30} = 12$.
+
+**Key idea:** work with exterior angles; they always sum to $360^\circ$.
+
+Q: **AMC 10 style.** Two similar triangles have corresponding sides in the ratio $2:3$. The smaller one has area $20$. What is the area of the larger one?
+
+(A) 30  (B) 40  (C) 45  (D) 50  (E) 60
+A: **Answer: (C) 45**
+
+1. Areas scale by the square of the side ratio: $\left(\frac{3}{2}\right)^2 = \frac94$.
+2. $20 \cdot \frac94 = 45$.
+
+**Key idea:** lengths scale by $k$, areas by $k^2$, volumes by $k^3$. (30 is the trap answer.)
+
+#deck: Math Contests::AIME
+#tags: aime numbertheory
+Q: **AIME style** (answer is an integer from 000 to 999). How many positive integers $n \le 1000$ are divisible by $3$ or by $7$, but not by both?
+A: **Answer: 381**
+
+1. Divisible by 3: $\lfloor 1000/3 \rfloor = 333$. By 7: $\lfloor 1000/7 \rfloor = 142$. By both (21): $\lfloor 1000/21 \rfloor = 47$.
+2. "Exactly one" removes the overlap from both groups: $333 + 142 - 2 \cdot 47 = 381$.
+
+**Key idea:** "or" subtracts the overlap once; "exactly one" subtracts it twice.
+
+Q: **AIME style.** Find the remainder when $2^{2026}$ is divided by $1000$.
+A: **Answer: 864**
+
+1. Split $1000 = 8 \cdot 125$. Mod 8: $2^{2026} \equiv 0$.
+2. Mod 125: Euler gives $2^{100} \equiv 1$, so $2^{2026} \equiv 2^{26}$. Since $2^7 = 128 \equiv 3$, $2^{26} = (2^7)^3 \cdot 2^5 \equiv 27 \cdot 32 = 864 \equiv 114$.
+3. Find $x \equiv 114 \pmod{125}$ that is a multiple of 8: try $114, 239, 364, 489, 614, 739, 864$. $864 = 8 \cdot 108$ works.
+
+**Key idea:** for mod 1000, split into mod 8 and mod 125 (Chinese Remainder Theorem).
+
+Q: **AIME style.** How many ordered pairs of positive integers $(x, y)$ satisfy $\frac{1}{x} + \frac{1}{y} = \frac{1}{12}$?
+A: **Answer: 15**
+
+1. Clear denominators: $12y + 12x = xy$, so $xy - 12x - 12y = 0$.
+2. Add 144 to factor (Simon's Favorite Factoring Trick): $(x - 12)(y - 12) = 144$.
+3. Both factors must be positive (if both were negative, $x$ or $y$ would not be positive). $144 = 2^4 \cdot 3^2$ has $5 \cdot 3 = 15$ positive divisors, and each gives one ordered pair.
+
+**Key idea:** $xy + ax + by$ form: add a constant to factor it as a product.
+
+Q: **AIME style.** How many positive integer divisors does $2025^2$ have?
+A: **Answer: 45**
+
+1. $2025 = 45^2 = 3^4 \cdot 5^2$, so $2025^2 = 3^8 \cdot 5^4$.
+2. Divisors: $(8+1)(4+1) = 45$.
+
+**Key idea:** recognize $2025 = 45^2$; contest years are often chosen for nice factorizations.
+
+Q: **AIME style.** Find the sum of all positive integers $n$ such that $n^2 + 24n$ is a perfect square.
+A: **Answer: 37**
+
+1. Complete the square: $n^2 + 24n = (n + 12)^2 - 144$. Set it equal to $k^2$: $(n + 12 - k)(n + 12 + k) = 144$.
+2. Both factors have the same parity, so both are even. Even pairs with product 144: $(2, 72), (4, 36), (6, 24), (8, 18), (12, 12)$.
+3. $n + 12$ is their average: $37, 20, 15, 13, 12$, giving $n = 25, 8, 3, 1, 0$. Drop $0$.
+4. $25 + 8 + 3 + 1 = 37$.
+
+**Key idea:** "is a perfect square" becomes a difference of squares, then factor pairs with matching parity.
+
+#tags: aime algebra
+Q: **AIME style.** Let $a$ and $b$ be the roots of $x^2 - 7x + 3 = 0$. Find $a^3 + b^3$.
+A: **Answer: 280**
+
+1. Vieta: $a + b = 7$, $ab = 3$.
+2. $a^3 + b^3 = (a+b)^3 - 3ab(a+b) = 343 - 63 = 280$.
+
+**Key idea:** write symmetric expressions in terms of $a + b$ and $ab$ instead of solving for the roots.
+
+#tags: aime counting
+Q: **AIME style.** How many four-digit positive integers have digits that are strictly increasing from left to right?
+A: **Answer: 126**
+
+1. A leading 0 is impossible here, so the digits come from $1$ to $9$.
+2. Any 4 distinct digits from these 9 can be arranged increasingly in exactly one way: $\binom{9}{4} = 126$.
+
+**Key idea:** "strictly increasing" turns an arrangement problem into a choose problem.
+
+Q: **AIME style.** How many integers from $1$ to $1000$ have digits that sum to $10$?
+A: **Answer: 63**
+
+1. Write each number below 1000 as three digits $a, b, c$ (with leading zeros). 1000 itself has digit sum 1.
+2. Solutions to $a + b + c = 10$ with digits $\ge 0$: $\binom{12}{2} = 66$.
+3. Remove solutions with a digit $\ge 10$: that digit is exactly 10 and the others are 0, which is 3 solutions. $66 - 3 = 63$.
+
+**Key idea:** stars and bars, then subtract cases that break the digit $\le 9$ limit.
+
+#tags: aime probability
+Q: **AIME style.** A bag has $10$ balls, $3$ of them red. Four balls are drawn at random without replacement. The probability that exactly $2$ are red is $\frac{m}{n}$ in lowest terms. Find $m + n$.
+A: **Answer: 13**
+
+1. Choose 2 of the 3 red and 2 of the 7 others: $\binom32 \binom72 = 3 \cdot 21 = 63$.
+2. Total ways: $\binom{10}{4} = 210$.
+3. $\frac{63}{210} = \frac{3}{10}$, so $m + n = 13$.
+
+**Key idea:** "exactly $k$ of a type" is a product of combinations over the total.
+
+#tags: aime geometry
+Q: **AIME style.** Triangle $ABC$ has $AB = 13$, $BC = 14$, $CA = 15$. Its circumradius is $\frac{m}{n}$ in lowest terms. Find $m + n$.
+
+![triangle 13-14-15 with its circumcircle](img/amc/triangle-circumcircle.svg)
+A: **Answer: 73**
+
+1. Area: $84$ (height 12 onto side 14).
+2. Circumradius: $R = \frac{abc}{4K} = \frac{13 \cdot 14 \cdot 15}{4 \cdot 84} = \frac{2730}{336} = \frac{65}{8}$.
+3. $m + n = 65 + 8 = 73$.
+
+**Key idea:** $R = \frac{abc}{4K}$ and inradius $r = \frac{K}{s}$ (here $r = \frac{84}{21} = 4$).
