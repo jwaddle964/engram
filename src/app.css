@@ -249,3 +249,17 @@ details.more > summary { cursor: pointer; color: var(--accent); margin: 8px 0; }
 .prog-bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: var(--surface2); gap: 2px; }
 .prog-bar i { display: block; }
 .p-mature { background: #188038; } .p-young { background: #7cc48b; } .p-learning { background: #e5484d; } .p-new { background: #6aa3f8; }
+
+/* formula sheet */
+.sheet-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 8px 0; border-top: 1px solid var(--border); font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
+.sheet-sec h2 + .sheet-row { border-top: 0; }
+.sheet-q { font-weight: 600; }
+.sheet-row.key { grid-template-columns: minmax(0, 1fr) auto; }
+.sheet-row.key .sheet-q { font-weight: 500; }
+.sheet-row .emoji-pic { font-size: 28px; margin: 2px 0; }
+.sheet-row pre { font-size: 12px; white-space: pre-wrap; background: var(--surface2); padding: 6px 8px; border-radius: 8px; margin: 4px 0; }
+.sheet-row img { max-width: 100%; max-height: 140px; }
+.sheet-row .cloze { color: var(--accent); font-weight: 700; }
+.sheet-row .katex-display { margin: 2px 0; overflow-x: auto; }
+.sheet-row ul, .sheet-row ol { margin: 2px 0; padding-left: 1.2em; }
+.sheet-tag { font-size: 12px; color: var(--muted); background: var(--surface2); border-radius: 999px; padding: 2px 8px; white-space: nowrap; }

@@ -131,7 +131,8 @@
     view.appendChild(h('div', { class: 'row', style: { justifyContent: 'center' } },
       h('button', { class: 'btn', onclick: () => customStudy(did) }, icon('sparkle'), 'Custom study'),
       h('button', { class: 'btn', onclick: () => { root.__browseQuery = 'deck:"' + deck.name + '"'; go('/browse'); } }, icon('search'), 'Browse'),
-      h('button', { class: 'btn', onclick: () => go('/hard/' + did) }, icon('target'), 'Hardest cards')));
+      h('button', { class: 'btn', onclick: () => go('/hard/' + did) }, icon('target'), 'Hardest cards'),
+      h('button', { class: 'btn', onclick: () => go('/sheet/' + did) }, icon('book'), 'Formula sheet')));
     view.appendChild(testPanel(deck));
     view.appendChild(progressPanel(deck));
     if (deck.desc) {
@@ -364,6 +365,111 @@
     draw();
   });
 
+  // ---------- similar problems ----------
+  function isProblemCard(card) {
+    const note = C.notes.get(card.nid);
+    if (!note) return false;
+    if (note.tags.some((t) => /^(amc\d*|aime|practice|problem)$/i.test(t))) return true;
+    return /\*\*Key idea:\*\*/.test(note.fields.join('\n'));
+  }
+  function similarProblem(card) {
+    const note = C.notes.get(card.nid);
+    const deck = C.decks.get(card.did);
+    const val = (i) => (note.fmt === 'html' ? T.stripHtml(note.fields[i] || '') : (note.fields[i] || '')).trim();
+    const lines = [
+      'Here is a practice problem I studied, with its solution:', '',
+      'PROBLEM:', val(0), '', 'SOLUTION:', val(1), '',
+      'Write 3 NEW problems that use the same key idea, at the same difficulty, with different numbers and a different setting so I cannot just copy the old answer. Solve each one yourself and double-check the answers.', '',
+      'Output ONLY one code block that starts with ````text and ends with ````, in exactly this format:',
+      '#deck: ' + (deck ? deck.name : 'Practice'),
+      '#tags: ' + note.tags.filter((t) => t.toLowerCase() !== 'leech').join(' '),
+      '',
+      'Q: (the problem, with answer choices on their own line if it is multiple choice)',
+      'A: **Answer: ...**',
+      '',
+      '1. first step',
+      '2. next step',
+      '',
+      '**Key idea:** one sentence',
+      '',
+      'Rules: math in $...$ (never \\( \\)), one blank line between cards, nothing else in the block.',
+    ];
+    root.UI.copyText(lines.join('\n')).then((ok) => toast(ok ? 'Copied. Paste it into Claude, then import its reply.' : 'Could not copy', ok ? { label: 'Open Claude', fn: () => window.open('https://claude.ai/new', '_blank') } : null));
+  }
+
+  // ---------- formula sheet ----------
+  route('/sheet/:did', (app, didStr) => {
+    const did = Number(didStr);
+    const deck = C.decks.get(did);
+    if (!deck) { go('/', true); return; }
+    app.appendChild(topbar('Formula sheet', iconBtn('back', 'Back', () => go('/deck/' + did))));
+    const view = h('main', { class: 'view' });
+    app.appendChild(view);
+    const decks = Col.deckDescendants(deck, true).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    const seen = new Set();
+    let total = 0;
+    const search = h('input', { type: 'search', placeholder: 'Filter (e.g. log, enzyme, probability)', autocapitalize: 'off' });
+    view.appendChild(h('p', { class: 'help', style: { marginTop: 0 } }, 'Every fact in ' + deck.name + ' on one page, to skim before a test. Problem cards show just their key idea.'));
+    view.appendChild(search);
+    const body = h('div');
+    view.appendChild(body);
+    for (const d of decks) {
+      const rows = [];
+      for (const c of C.cards.values()) {
+        if (c.did !== d.id || seen.has(c.nid) || c.queue === -1) continue;
+        seen.add(c.nid);
+        const note = C.notes.get(c.nid);
+        const nt = C.notetypes.get(note.ntid);
+        if (!note || !nt || Col.isImageOcclusion(nt)) continue;
+        let left, right;
+        const src = note.fields.join('\n');
+        const key = note.fmt !== 'html' && /\*\*Key idea:\*\*\s*([^\n]+)/.exec(note.fields[1] || '');
+        if (key) {
+          left = T.mdToHtml(key[1]);
+          const tag = note.tags.find((t) => !/^(amc\d*|aime|practice|leech)$/i.test(t));
+          right = tag ? '<span class="sheet-tag">' + T.escapeHtml(tag) + '</span>' : '';
+        } else if (nt.kind === 'cloze') {
+          left = T.clozeFilter(Col.fieldHtml(note, 0), 1, false).replace(/class="cloze-inactive"/g, 'class="cloze"');
+          right = '';
+        } else {
+          left = Col.fieldHtml(note, 0);
+          right = Col.fieldHtml(note, 1);
+        }
+        void src;
+        rows.push({ left, right, text: T.stripHtml(left + ' ' + right).toLowerCase(), pos: c.due, id: c.id, key: !!key });
+      }
+      if (!rows.length) continue;
+      rows.sort((a, b) => a.id - b.id);
+      total += rows.length;
+      const sec = h('div', { class: 'panel sheet-sec' }, h('h2', null, d.name.split('::').slice(1).join(' > ') || d.name));
+      for (const r of rows) {
+        const row = h('div', { class: 'sheet-row' + (r.key ? ' key' : '') });
+        const a = h('div', { class: 'sheet-q' }), b = h('div', { class: 'sheet-a' });
+        root.UI.sanitizeInto(a, r.left); root.UI.sanitizeInto(b, r.right);
+        row.append(a, b);
+        row.dataset.text = r.text;
+        sec.appendChild(row);
+      }
+      body.appendChild(sec);
+    }
+    if (!total) body.appendChild(h('div', { class: 'panel empty' }, 'No cards in this deck yet.'));
+    if (root.renderMathInElement) {
+      try { root.renderMathInElement(body, { delimiters: [{ left: '\\[', right: '\\]', display: true }, { left: '\\(', right: '\\)', display: false }], throwOnError: false, strict: 'ignore' }); } catch (e) { /* ignore */ }
+    }
+    for (const img of body.querySelectorAll('img[src]')) {
+      const src = img.getAttribute('src');
+      if (!/^(https?:|data:|blob:)/i.test(src)) { img.removeAttribute('src'); root.UI.mediaUrl(src).then((u) => { if (u) img.src = u; else if (src.includes('/')) img.src = src; }); }
+    }
+    search.addEventListener('input', () => {
+      const q = search.value.trim().toLowerCase();
+      for (const sec of body.querySelectorAll('.sheet-sec')) {
+        let any = false;
+        for (const row of sec.querySelectorAll('.sheet-row')) { const show = !q || row.dataset.text.includes(q); row.style.display = show ? '' : 'none'; any = any || show; }
+        sec.style.display = any ? '' : 'none';
+      }
+    });
+  });
+
   // ---------- ask Claude ----------
   function cardForClaude(card) {
     const note = C.notes.get(card.nid);
@@ -499,6 +605,7 @@
       bar.innerHTML = '';
       if (keep) bar.appendChild(keep);
       const mk = (cls, label, r) => h('button', { class: 'ease ' + cls, type: 'button', onclick: () => answer(r) }, showIvls ? h('small', null, labels[cls]) : null, label);
+      if (isProblemCard(card)) { const cur = card; bar.appendChild(h('div', { class: 'row', style: { justifyContent: 'center', marginBottom: '8px' } }, h('button', { class: 'chip', type: 'button', onclick: () => similarProblem(cur) }, 'Make similar problems with Claude'))); }
       bar.appendChild(h('div', { class: 'ease-grid' }, mk('again', 'Again', 1), mk('hard', 'Hard', 2), mk('good', 'Good', 3), mk('easy', 'Easy', 4)));
     }
     function answer(r) {
@@ -525,6 +632,7 @@
       const note = C.notes.get(cur.nid);
       menu('Card', [
         { label: 'Ask Claude about this card', icon: 'help', fn: () => askClaude(cur) },
+        { label: 'Make similar problems with Claude', icon: 'sparkle', fn: () => similarProblem(cur) },
         { label: 'Edit note', icon: 'edit', fn: () => { root.__studyPrefer = cur.id; go('/edit/' + cur.nid); } },
         { label: 'Card info', icon: 'info', fn: () => cardInfo(cur.id) },
         { label: 'Flag', icon: 'flag', fn: () => flagMenu([cur.id], () => { next(cur.id); }) },
@@ -732,5 +840,5 @@
     return () => document.removeEventListener('keydown', onKey);
   });
 
-  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt, weekStats };
+  root.Views = { cardInfo, flagMenu, customStudy, countsEl, cardForClaude, askClaude, hardCards, fixPrompt, weekStats, similarProblem, isProblemCard };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
